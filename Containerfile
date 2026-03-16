@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build
 # Run stage
 FROM scratch AS release
 
-# Import redlib binary from builder
+# Import binary from builder
 COPY --from=builder /app/mezzo /usr/local/bin/mezzo
 
 # Import other essentials from builder
