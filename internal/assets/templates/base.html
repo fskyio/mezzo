@@ -1,0 +1,48 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>{{if eq .Title "Mezzo"}}Mezzo{{else}}{{.Title}} - Mezzo{{end}}</title>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	{{if .OGImage}}
+	<meta property="og:image" content="{{.OGImage}}">
+	<meta property="og:image:alt" content="{{.Title}}">
+	<meta property="og:image:type" content="image/gif">
+	{{end}}
+	<link rel="stylesheet" href="/static/style.css">
+	<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+	<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+	<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+	<link rel="manifest" href="/site.webmanifest">
+</head>
+<body>
+	<header>
+		<a class="logo" href="/"><img src="/static/mezzo.svg" alt="Mezzo" width="129px" height="30px"></a>
+		<form id="search" role="search" method="get" action="/search">
+			<input type="search" id="q" name="q" placeholder="Search for GIFs..." value="{{.Query}}">
+			<button type="submit">Go</button>
+		</form>
+	</header>
+
+	<main>
+		{{template "content" .}}
+	</main>
+
+	<footer>
+		<nav>
+			{{if .Version}}
+			<span>Version {{.Version}}</span>
+			•
+			{{end}}
+			<a href="https://foundry.fsky.io/fsky/mezzo">Source code</a>
+			{{if .PatchesURL}}
+			•
+			<a href="{{.PatchesURL}}">Patches</a>
+			{{end}}
+		</nav>
+	</footer>
+</body>
+</html>
+{{end}}

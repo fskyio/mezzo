@@ -1,0 +1,10 @@
+{{define "content"}}
+	<h1>Search</h1>
+	<div class="search-results">
+		{{range .Results}}
+		<a href="{{.URL}}">
+			<img src="{{proxy .ImageURL}}" loading="lazy" alt="">
+		</a>
+		{{end}}
+	</div>
+{{end}}

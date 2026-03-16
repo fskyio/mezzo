@@ -1,0 +1,15 @@
+services:
+  redlib:
+    image: foundry.fsky.io/fsky/mezzo:latest
+    restart: always
+    container_name: "mezzo"
+    ports:
+      - 8006:8006 # Specify `127.0.0.1:8006:8006` instead if using a reverse proxy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    #environment:
+    # - PORT=8006
+    # - PATCHES_URL=

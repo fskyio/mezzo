@@ -1,0 +1,12 @@
+[Container]
+ContainerName=mezzo
+DropCapability=ALL
+#Environment=PORT=8006
+#Environment=PATCHES_URL=
+Image=foundry.fsky.io/fsky/mezzo:latest
+NoNewPrivileges=true
+PublishPort=8006:8006
+ReadOnly=true
+
+[Service]
+Restart=always
