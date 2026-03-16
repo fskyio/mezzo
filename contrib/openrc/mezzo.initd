@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+
+name=mezzo
+command="/usr/local/bin/mezzo"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+command_user="mezzo:mezzo"
+
+export PORT="${PORT:-8006}"
+export PATCHES_URL="${PATCHES_URL:-}"
+
+depend() {
+	need net
+}

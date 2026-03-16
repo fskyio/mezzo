@@ -1,0 +1,5 @@
+# Listening port
+PORT="8006"
+
+# Patches URL (leave empty or comment out if running vanilla Mezzo)
+# PATCHES_URL=""
