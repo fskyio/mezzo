@@ -36,6 +36,17 @@ kos:
       - linux/amd64
       - linux/arm64
     sbom: none
+    labels:
+      org.opencontainers.image.authors: FSKY
+      org.opencontainers.image.created: "{{.Date}}"
+      org.opencontainers.image.description: A private and lightweight GIF viewer for Tenor
+      org.opencontainers.image.licenses: AGPL-3.0-or-later
+      org.opencontainers.image.revision: "{{.FullCommit}}"
+      org.opencontainers.image.source: https://foundry.fsky.io/fsky/mezzo
+      org.opencontainers.image.title: Mezzo
+      org.opencontainers.image.url: https://mezzo.fsky.io/
+      org.opencontainers.image.vendor: FSKY
+      org.opencontainers.image.version: "{{.Version}}"
 
 gitea_urls:
   api: https://foundry.fsky.io/api/v1

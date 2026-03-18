@@ -28,7 +28,7 @@ EXPOSE 8006
 
 # Add container metadata
 LABEL org.opencontainers.image.title="Mezzo" \
-      org.opencontainers.image.description="A private front-end for Tenor" \
+      org.opencontainers.image.description="A private and lightweight GIF viewer for Tenor" \
       org.opencontainers.image.authors="FSKY" \
       org.opencontainers.image.url="https://mezzo.fsky.io/" \
       org.opencontainers.image.source="https://foundry.fsky.io/fsky/mezzo" \
