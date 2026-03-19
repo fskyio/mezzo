@@ -10,7 +10,7 @@
 	<meta property="og:image:alt" content="{{.Title}}">
 	<meta property="og:image:type" content="image/gif">
 	{{end}}
-	<link rel="stylesheet" href="/static/style.css">
+	<link rel="stylesheet" href="/static/style.css{{if .Version}}?v={{.Version}}{{end}}">
 	<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 	<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 	<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
