@@ -248,6 +248,14 @@ func (s *Server) handleSearchRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(q, "tenor.com/view/") {
+		parts := strings.Split(q, "tenor.com/view/")
+		if len(parts) == 2 && parts[1] != "" {
+			http.Redirect(w, r, "/view/"+parts[1], http.StatusMovedPermanently)
+			return
+		}
+	}
+
 	slug := strings.ReplaceAll(q, " ", "-") + "-gifs"
 	http.Redirect(w, r, "/search/"+slug, http.StatusMovedPermanently)
 }
