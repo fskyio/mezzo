@@ -1,3 +1,17 @@
+# Binaries for programs and plugins
 mezzo
-# Added by goreleaser init:
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Go workspace file
+go.work
+go.work.sum
+
+# goreleaser builds
 dist/

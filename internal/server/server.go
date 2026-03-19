@@ -60,7 +60,17 @@ type BasePage struct {
 // ViewPage contains template data for the GIF view page
 type ViewPage struct {
 	BasePage
-	ImageURL string
+	ImageURL     string
+	Author       string
+	AuthorURL    string
+	AuthorAvatar string
+	UploadDate   string
+	Tags         []string
+	Description  string
+	FileSize     string
+	Duration     string
+	Dimensions   string
+	Created      string
 }
 
 // SearchPage contains template data for the search results page
@@ -88,6 +98,13 @@ func New(assets fs.FS, version string) (*Server, error) {
 	funcMap := template.FuncMap{
 		"proxy": func(u string) string {
 			return scraper.Proxy(u)
+		},
+		"formatDate": func(s string) string {
+			t, err := time.Parse(time.RFC3339, s)
+			if err != nil {
+				return s
+			}
+			return t.Format("2006-01-02 15:04:05")
 		},
 	}
 
@@ -208,7 +225,17 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			Version:    s.version,
 			Host:       r.Host,
 		},
-		ImageURL: gifPage.ImageURL,
+		ImageURL:     gifPage.ImageURL,
+		Author:       gifPage.Author,
+		AuthorURL:    gifPage.AuthorURL,
+		AuthorAvatar: gifPage.AuthorAvatar,
+		UploadDate:   gifPage.UploadDate,
+		Tags:         gifPage.Tags,
+		Description:  gifPage.Description,
+		FileSize:     gifPage.FileSize,
+		Duration:     gifPage.Duration,
+		Dimensions:   gifPage.Dimensions,
+		Created:      gifPage.Created,
 	}
 
 	s.render(w, "view.html", data)
@@ -270,7 +297,9 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Allowlist Tenor media hosts
-	if !strings.HasPrefix(targetURL, "https://media.tenor.com/") && !strings.HasPrefix(targetURL, "https://media1.tenor.com/") {
+	if !strings.HasPrefix(targetURL, "https://media.tenor.com/") &&
+		!strings.HasPrefix(targetURL, "https://media1.tenor.com/") &&
+		!strings.HasPrefix(targetURL, "https://c.tenor.com/") {
 		s.handleError(w, http.StatusBadRequest)
 		return
 	}

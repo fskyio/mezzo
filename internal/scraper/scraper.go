@@ -40,17 +40,30 @@ type SearchResult struct {
 
 // GifPage represents the scraped data from a GIF view page
 type GifPage struct {
-	Title    string
-	ImageURL string
+	Title        string
+	ImageURL     string
+	Author       string
+	AuthorURL    string
+	AuthorAvatar string
+	UploadDate   string
+	Tags         []string
+	Description  string
+	FileSize     string
+	Duration     string
+	Dimensions   string
+	Created      string
 }
 
 // Proxy generates a proxied URL for a given image URL
 func Proxy(imageURL string) string {
+	if imageURL == "" {
+		return ""
+	}
 	return fmt.Sprintf("/proxy.gif?url=%s", url.QueryEscape(imageURL))
 }
 
 func isTenorMedia(src string) bool {
-	return strings.Contains(src, "media.tenor.com") || strings.Contains(src, "media1.tenor.com")
+	return strings.Contains(src, "media.tenor.com") || strings.Contains(src, "media1.tenor.com") || strings.Contains(src, "c.tenor.com")
 }
 
 // GetGif scrapes a Tenor GIF page for the title and image URL
@@ -95,9 +108,86 @@ func GetGif(path string) (*GifPage, error) {
 		return nil, fmt.Errorf("could not find image URL")
 	}
 
+	// Extract metadata
+	author := doc.Find("meta[itemprop='author']").AttrOr("content", "")
+	authorURL := ""
+	authorAvatar := ""
+	doc.Find("a.author-username").Each(func(i int, s *goquery.Selection) {
+		if href, ok := s.Attr("href"); ok {
+			authorURL = TenorBaseURL + href
+		}
+	})
+
+	// Try to find the avatar from the profile-info section
+	doc.Find(".profile-info .ProfileImage").Each(func(i int, s *goquery.Selection) {
+		style, ok := s.Attr("style")
+		if ok && strings.Contains(style, "background-image") {
+			// background-image:url("https://...");
+			start := strings.Index(style, "url(")
+			if start != -1 {
+				style = style[start+4:]
+				end := strings.Index(style, ")")
+				if end != -1 {
+					avatar := style[:end]
+					avatar = strings.Trim(avatar, "\"")
+					avatar = strings.Trim(avatar, "'")
+					authorAvatar = avatar
+				}
+			}
+		}
+	})
+
+	uploadDate := doc.Find("meta[itemprop='uploadDate']").AttrOr("content", "")
+
+	var tags []string
+	doc.Find("ul.tag-list li a div").Each(func(i int, s *goquery.Selection) {
+		tags = append(tags, s.Text())
+	})
+	// Fallback for tags if the structure is slightly different (e.g. just a inside li)
+	if len(tags) == 0 {
+		doc.Find("ul.tag-list li a").Each(func(i int, s *goquery.Selection) {
+			text := strings.TrimSpace(s.Text())
+			if text != "" {
+				tags = append(tags, text)
+			}
+		})
+	}
+
+	// Extract additional details from <dl> inside .gif-details
+	description := ""
+	fileSize := ""
+	duration := ""
+	dimensions := ""
+	created := ""
+
+	doc.Find(".gif-details.non-mobile-only dl dd").Each(func(i int, s *goquery.Selection) {
+		text := strings.TrimSpace(s.Text())
+		if strings.HasPrefix(text, "Content Description:") {
+			description = strings.TrimSpace(strings.TrimPrefix(text, "Content Description:"))
+		} else if strings.HasPrefix(text, "File Size:") {
+			fileSize = strings.TrimSpace(strings.TrimPrefix(text, "File Size:"))
+		} else if strings.HasPrefix(text, "Duration:") {
+			duration = strings.TrimSpace(strings.TrimPrefix(text, "Duration:"))
+		} else if strings.HasPrefix(text, "Dimensions:") {
+			dimensions = strings.TrimSpace(strings.TrimPrefix(text, "Dimensions:"))
+		} else if strings.HasPrefix(text, "Created:") {
+			created = strings.TrimSpace(strings.TrimPrefix(text, "Created:"))
+		}
+	})
+
 	return &GifPage{
-		Title:    title,
-		ImageURL: imageURL,
+		Title:        title,
+		ImageURL:     imageURL,
+		Author:       author,
+		AuthorURL:    authorURL,
+		AuthorAvatar: authorAvatar,
+		UploadDate:   uploadDate,
+		Tags:         tags,
+		Description:  description,
+		FileSize:     fileSize,
+		Duration:     duration,
+		Dimensions:   dimensions,
+		Created:      created,
 	}, nil
 }
 
