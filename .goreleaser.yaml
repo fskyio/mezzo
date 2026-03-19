@@ -6,7 +6,8 @@ before:
     - go generate ./...
 
 builds:
-  - env:
+  - binary: mezzo   
+    env:
       - CGO_ENABLED=0
     flags:
       - -trimpath
@@ -14,6 +15,8 @@ builds:
       - linux
       - windows
       - darwin
+    id: mezzo
+    main: ./cmd/mezzo
 
 archives:
   - formats: [tar.gz]

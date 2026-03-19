@@ -47,7 +47,7 @@ This program is written in Go. You need Go 1.25 or later.
 
 You can build a binary using:
 ```bash
-go build
+go build -o mezzo ./cmd/mezzo
 ```
 
 ## Environment

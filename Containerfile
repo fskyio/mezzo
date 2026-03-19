@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=$(git rev-parse --short HEAD)"
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=$(git rev-parse --short HEAD)" -o mezzo ./cmd/mezzo
 
 
 # Run stage
