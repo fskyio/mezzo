@@ -60,7 +60,7 @@ header .logo {
 header form {
 	display: flex;
 	width: 100%;
-	max-width: 420px;
+	max-width: 600px;
 }
 
 header form .search-container {
@@ -252,6 +252,7 @@ a {
 	margin: 1.5rem auto 0;
 	padding: 1.5rem;
 	background: var(--metadata-bg);
+	border: 1px solid var(--border);
 	border-radius: 12px;
 	display: block;
 	text-align: left;
