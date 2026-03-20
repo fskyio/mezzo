@@ -156,6 +156,19 @@ pre code {
 	gap: 0.75rem;
 }
 
+@supports (display: grid-lanes) {
+	.search-results {
+		display: grid-lanes;
+	}
+}
+
+@supports (grid-template-rows: masonry) {
+	.search-results {
+		grid-template-rows: masonry;
+		align-items: start;
+	}
+}
+
 .search-results a {
 	display: block;
 	overflow: hidden;
