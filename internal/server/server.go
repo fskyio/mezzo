@@ -208,6 +208,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+
 	path := r.URL.Path
 
 	gifPage, err := scraper.GetGif(path)
@@ -220,10 +228,11 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	data := ViewPage{
 		BasePage: BasePage{
 			Title:      gifPage.Title,
-			OGImage:    gifPage.ImageURL,
+			OGImage:    scraper.Proxy(gifPage.ImageURL),
 			PatchesURL: s.patchesURL,
 			Version:    s.version,
 			Host:       r.Host,
+			Scheme:     scheme,
 		},
 		ImageURL:     gifPage.ImageURL,
 		Author:       gifPage.Author,

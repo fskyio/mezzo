@@ -6,9 +6,11 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	{{if .OGImage}}
-	<meta property="og:image" content="{{.OGImage}}">
+	<meta property="og:image" content="{{.Scheme}}://{{.Host}}{{.OGImage}}">
 	<meta property="og:image:alt" content="{{.Title}}">
 	<meta property="og:image:type" content="image/gif">
+	<meta property="twitter:card" content="summary_large_image">
+	<meta property="twitter:image" content="{{.Scheme}}://{{.Host}}{{.OGImage}}">
 	{{end}}
 	<link rel="stylesheet" href="/static/style.css{{if .Version}}?v={{.Version}}{{end}}">
 	<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
