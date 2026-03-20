@@ -9,10 +9,18 @@ For public instances of Mezzo, see [mezzo-instances](https://foundry.fsky.io/fsk
 # Run your own instance
 
 ## With Docker/Podman
-We have a pre-build image. You can run it using:
+We have pre-built images you can run.
+
+To run the latest stable version of Mezzo (recommended):
 
 ```bash
 docker run -p8006:8006 foundry.fsky.io/fsky/mezzo:latest
+```
+
+To run the canary (unstable) version of Mezzo built from the latest Git commit:
+
+```bash
+docker run -p8006:8006 foundry.fsky.io/fsky/mezzo:canary
 ```
 
 If you are using Podman, the process is the same. Just replace `docker` with `podman` in the command.
