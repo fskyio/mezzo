@@ -58,9 +58,11 @@ You can build a binary using:
 go build -o mezzo ./cmd/mezzo
 ```
 
-## Environment
+## Configuration
+The following environment variables are available:
+
 `PATCHES_URL` - Link to any patches that were applied. Necessary if there are any. Do not set if there aren't.
 
-The following are optional.
+The following are optional:
 
 `PORT` - What port to run on (default `8006`).

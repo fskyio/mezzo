@@ -25,6 +25,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"mezzo/internal/client"
 	"mezzo/internal/scraper"
 	"net/http"
 	"os"
@@ -321,7 +322,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Get(targetURL)
+	resp, err := client.Default.Get(targetURL)
 	if err != nil {
 		log.Printf("Error fetching proxy URL: %v", err)
 		s.handleError(w, http.StatusBadGateway)

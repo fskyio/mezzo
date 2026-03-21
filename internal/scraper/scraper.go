@@ -21,7 +21,7 @@ package scraper
 
 import (
 	"fmt"
-	"net/http"
+	"mezzo/internal/client"
 	"net/url"
 	"strings"
 
@@ -231,7 +231,7 @@ func GetSearch(path string) ([]SearchResult, error) {
 
 // FetchDocument fetches a URL and returns a goquery Document
 func FetchDocument(url string) (*goquery.Document, error) {
-	res, err := http.Get(url)
+	res, err := client.Default.Get(url)
 	if err != nil {
 		return nil, err
 	}
