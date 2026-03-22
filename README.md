@@ -1,7 +1,8 @@
 # Mezzo
 Mezzo is a privacy-respecting front-end to Tenor.
 
-This project is incomplete. The only supported endpoints are /view (gif) and /search (search).
+> [!NOTE]
+> This project is incomplete. The only supported endpoints are `/view` and `/search`. See the [feature completeness roadmap](https://foundry.fsky.io/fsky/mezzo/projects/5) to find out what's left to add.
 
 # Instances
 For public instances of Mezzo, see [mezzo-instances](https://foundry.fsky.io/fsky/mezzo-instances).
@@ -26,14 +27,14 @@ docker run -p8006:8006 foundry.fsky.io/fsky/mezzo:canary
 If you are using Podman, the process is the same. Just replace `docker` with `podman` in the command.
 
 ### Compose
-You can find a compose file in `contrib/compose/compose.yaml`. Simply download it and run:
+You can find a compose file in [`contrib/compose/compose.yaml`](contrib/compose/compose.yaml). Simply download it and run:
 
 ```
 docker compose up -d
 ```
 
 ### Quadlet
-You can find a Quadlet file in `contrib/quadlet/mezzo.container`. Download it and place it into `.config/containers/systemd/`. After that, run:
+You can find a Quadlet file in [`contrib/quadlet/mezzo.container`](contrib/quadlet/mezzo.container). Download it and place it into `~/.config/containers/systemd/` or `/etc/containers/systemd/`. After that, run:
 
 ```
 systemctl --user daemon-reload
@@ -46,9 +47,9 @@ Binaries are provided for Windows, macOS, and Linux for amd64 and arm64. You can
 Once downloaded, simply extract the tarball or zip file, and run the executable. 
 
 ### Running with systemd or other service managers
-For systemd, you can find an example service file in `contrib/systemd/mezzo.service`.
+For systemd, you can find an example service file in [`contrib/systemd/mezzo.service`](contrib/systemd/mezzo.service).
 
-For OpenRC, you can find an example service script and configuration file in `contrib/openrc/`.
+For OpenRC, you can find an example service script and configuration file in [`contrib/openrc/`](contrib/openrc/).
 
 ## Build from source
 This program is written in Go. You need Go 1.25 or later.
@@ -58,11 +59,13 @@ You can build a binary using:
 go build -o mezzo ./cmd/mezzo
 ```
 
-## Configuration
-The following environment variables are available:
+# Configuration
+The application can be configured using the following environment variables:
 
-`PATCHES_URL` - Link to any patches that were applied. Necessary if there are any. Do not set if there aren't.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PATCHES_URL` | | Link to any patches that were applied. Only set this if your instance runs modified source code. |
+| `PORT` | `8006` | Port to run on. |
 
-The following are optional:
-
-`PORT` - What port to run on (default `8006`).
+# License
+Copyright © 2026-present FSKY. This software is distributed under the [AGPL-3.0 license](LICENSE).
