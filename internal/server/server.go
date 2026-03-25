@@ -66,17 +66,18 @@ type BasePage struct {
 // ViewPage contains template data for the GIF view page
 type ViewPage struct {
 	BasePage
-	ImageURL     string
-	Author       string
-	AuthorURL    string
-	AuthorAvatar string
-	UploadDate   string
-	Tags         []string
-	Description  string
-	FileSize     string
-	Duration     string
-	Dimensions   string
-	Created      string
+	ImageURL        string
+	Author          string
+	AuthorURL       string
+	AuthorAvatar    string
+	AuthorIsPartner bool
+	UploadDate      string
+	Tags            []string
+	Description     string
+	FileSize        string
+	Duration        string
+	Dimensions      string
+	Created         string
 }
 
 // SearchPage contains template data for the search results page
@@ -287,17 +288,18 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			Host:       r.Host,
 			Scheme:     scheme,
 		},
-		ImageURL:     gifPage.ImageURL,
-		Author:       gifPage.Author,
-		AuthorURL:    gifPage.AuthorURL,
-		AuthorAvatar: gifPage.AuthorAvatar,
-		UploadDate:   gifPage.UploadDate,
-		Tags:         gifPage.Tags,
-		Description:  gifPage.Description,
-		FileSize:     gifPage.FileSize,
-		Duration:     gifPage.Duration,
-		Dimensions:   gifPage.Dimensions,
-		Created:      gifPage.Created,
+		ImageURL:        gifPage.ImageURL,
+		Author:          gifPage.Author,
+		AuthorURL:       gifPage.AuthorURL,
+		AuthorAvatar:    gifPage.AuthorAvatar,
+		AuthorIsPartner: strings.HasPrefix(gifPage.AuthorURL, "/official/"),
+		UploadDate:      gifPage.UploadDate,
+		Tags:            gifPage.Tags,
+		Description:     gifPage.Description,
+		FileSize:        gifPage.FileSize,
+		Duration:        gifPage.Duration,
+		Dimensions:      gifPage.Dimensions,
+		Created:         gifPage.Created,
 	}
 
 	s.render(w, "view.html", data)
