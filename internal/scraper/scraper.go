@@ -36,6 +36,7 @@ const (
 type SearchResult struct {
 	URL      string
 	ImageURL string
+	Alt      string
 }
 
 // GifPage represents the scraped data from a GIF view page
@@ -210,6 +211,7 @@ func GetSearch(path string) ([]SearchResult, error) {
 
 		// The preview image is nested inside the anchor
 		img := s.Find("img").First()
+		alt, _ := img.Attr("alt")
 		src, srcExists := img.Attr("src")
 		if !srcExists {
 			return
@@ -223,6 +225,7 @@ func GetSearch(path string) ([]SearchResult, error) {
 		results = append(results, SearchResult{
 			URL:      href,
 			ImageURL: src,
+			Alt:      alt,
 		})
 	})
 

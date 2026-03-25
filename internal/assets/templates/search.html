@@ -3,8 +3,14 @@
 	<div class="search-results">
 		{{range .Results}}
 		<a href="{{.URL}}">
-			<img src="{{proxy .ImageURL}}" loading="lazy" alt="">
+			<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}">
 		</a>
 		{{end}}
 	</div>
+	{{if or .PrevURL .NextURL}}
+	<nav class="pagination">
+		{{if .PrevURL}}<a class="button" href="{{.PrevURL}}">&larr; Previous</a>{{end}}
+		{{if .NextURL}}<a class="button primary" href="{{.NextURL}}">Next &rarr;</a>{{end}}
+	</nav>
+	{{end}}
 {{end}}

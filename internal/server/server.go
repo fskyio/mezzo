@@ -28,6 +28,7 @@ import (
 	"mezzo/internal/client"
 	"mezzo/internal/scraper"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -78,6 +79,8 @@ type ViewPage struct {
 type SearchPage struct {
 	BasePage
 	Results []scraper.SearchResult
+	NextURL string
+	PrevURL string
 }
 
 // ErrorPage contains template data for error pages
@@ -272,12 +275,58 @@ func (s *Server) handleSearchRedirect(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	pos := r.URL.Query().Get("pos")
+	prev := r.URL.Query().Get("prev")
 
-	results, err := scraper.GetSearch(path)
-	if err != nil {
-		log.Printf("Error scraping search page: %v", err)
-		s.handleError(w, http.StatusInternalServerError)
+	query := queryFromSearchPath(path)
+	if query == "" {
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
+	}
+
+	searchResp, err := scraper.APISearch(query, pos)
+	if err != nil {
+		// Fallback to HTML scraping (first page only, no pagination)
+		log.Printf("Tenor API failed, falling back to HTML scraping: %v", err)
+		results, scrapeErr := scraper.GetSearch(path)
+		if scrapeErr != nil {
+			log.Printf("HTML scraping fallback also failed: %v", scrapeErr)
+			s.handleError(w, http.StatusInternalServerError)
+			return
+		}
+		data := SearchPage{
+			BasePage: BasePage{
+				Title:      "Search",
+				PatchesURL: s.patchesURL,
+				Version:    s.version,
+				Host:       r.Host,
+				Query:      query,
+			},
+			Results: results,
+		}
+		s.render(w, "search.html", data)
+		return
+	}
+
+	// Build the next page URL, carrying the current pos as prev
+	var nextURL string
+	if searchResp.Next != "" {
+		nextURL = path + "?pos=" + url.QueryEscape(searchResp.Next)
+		if pos != "" {
+			nextURL += "&prev=" + url.QueryEscape(pos)
+		}
+	}
+
+	// Build the previous page URL
+	var prevURL string
+	if pos != "" {
+		if prev != "" {
+			// Go back to the previous cursor position
+			prevURL = path + "?pos=" + url.QueryEscape(prev)
+		} else {
+			// We're on page 2, previous is page 1 (no pos param)
+			prevURL = path
+		}
 	}
 
 	data := SearchPage{
@@ -286,9 +335,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			PatchesURL: s.patchesURL,
 			Version:    s.version,
 			Host:       r.Host,
-			Query:      queryFromSearchPath(path),
+			Query:      query,
 		},
-		Results: results,
+		Results: searchResp.Results,
+		NextURL: nextURL,
+		PrevURL: prevURL,
 	}
 
 	s.render(w, "search.html", data)
