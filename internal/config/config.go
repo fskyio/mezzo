@@ -31,11 +31,13 @@ type Config struct {
 	PatchesURL string
 
 	// Cache settings
-	CacheDisabled  bool
-	CacheGifTTL    time.Duration
-	CacheGifMax    int
-	CacheSearchTTL time.Duration
-	CacheSearchMax int
+	CacheDisabled   bool
+	CacheGifTTL     time.Duration
+	CacheGifMax     int
+	CacheSearchTTL  time.Duration
+	CacheSearchMax  int
+	CacheProfileTTL time.Duration
+	CacheProfileMax int
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -43,13 +45,15 @@ type Config struct {
 // fallbacks when their MEZZO_ prefixed counterparts are not set.
 func Load() *Config {
 	return &Config{
-		Port:           envOrFallback("MEZZO_PORT", "PORT", "8006"),
-		PatchesURL:     envOrFallback("MEZZO_PATCHES_URL", "PATCHES_URL", ""),
-		CacheDisabled:  envBool("MEZZO_CACHE_DISABLED", false),
-		CacheGifTTL:    envDuration("MEZZO_CACHE_GIF_TTL", 1*time.Hour),
-		CacheGifMax:    envInt("MEZZO_CACHE_GIF_MAX", 1000),
-		CacheSearchTTL: envDuration("MEZZO_CACHE_SEARCH_TTL", 10*time.Minute),
-		CacheSearchMax: envInt("MEZZO_CACHE_SEARCH_MAX", 500),
+		Port:            envOrFallback("MEZZO_PORT", "PORT", "8006"),
+		PatchesURL:      envOrFallback("MEZZO_PATCHES_URL", "PATCHES_URL", ""),
+		CacheDisabled:   envBool("MEZZO_CACHE_DISABLED", false),
+		CacheGifTTL:     envDuration("MEZZO_CACHE_GIF_TTL", 1*time.Hour),
+		CacheGifMax:     envInt("MEZZO_CACHE_GIF_MAX", 1000),
+		CacheSearchTTL:  envDuration("MEZZO_CACHE_SEARCH_TTL", 10*time.Minute),
+		CacheSearchMax:  envInt("MEZZO_CACHE_SEARCH_MAX", 500),
+		CacheProfileTTL: envDuration("MEZZO_CACHE_PROFILE_TTL", 30*time.Minute),
+		CacheProfileMax: envInt("MEZZO_CACHE_PROFILE_MAX", 200),
 	}
 }
 

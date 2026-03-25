@@ -42,13 +42,14 @@ const (
 
 // Server wires routes, templates, and the asset filesystem
 type Server struct {
-	router      *http.ServeMux
-	templates   map[string]*template.Template
-	patchesURL  string
-	assets      fs.FS
-	version     string
-	gifCache    *cache.Cache[*scraper.GifPage]
-	searchCache *cache.Cache[*scraper.SearchResponse]
+	router       *http.ServeMux
+	templates    map[string]*template.Template
+	patchesURL   string
+	assets       fs.FS
+	version      string
+	gifCache     *cache.Cache[*scraper.GifPage]
+	searchCache  *cache.Cache[*scraper.SearchResponse]
+	profileCache *cache.Cache[*scraper.ProfilePage]
 }
 
 // BasePage contains template data shared by all pages
@@ -92,6 +93,19 @@ type ErrorPage struct {
 	Code int
 }
 
+// ProfilePageData contains template data for the user profile page
+type ProfilePageData struct {
+	BasePage
+	Username    string
+	DisplayName string
+	Tagline     string
+	AvatarURL   string
+	BannerURL   string
+	UserType    string
+	SocialLinks []scraper.SocialLink
+	GIFs        []scraper.SearchResult
+}
+
 // New creates a new Server instance
 func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 	s := &Server{
@@ -105,6 +119,7 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 	if !cfg.CacheDisabled {
 		s.gifCache = cache.New[*scraper.GifPage](cfg.CacheGifTTL, cfg.CacheGifMax)
 		s.searchCache = cache.New[*scraper.SearchResponse](cfg.CacheSearchTTL, cfg.CacheSearchMax)
+		s.profileCache = cache.New[*scraper.ProfilePage](cfg.CacheProfileTTL, cfg.CacheProfileMax)
 	}
 
 	funcMap := template.FuncMap{
@@ -127,7 +142,7 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 	}
 
 	// Parse each page template on top of the base template
-	pages := []string{"index.html", "view.html", "search.html", "error.html"}
+	pages := []string{"index.html", "view.html", "search.html", "error.html", "profile.html"}
 	for _, page := range pages {
 		tmpl, err := baseTmpl.Clone()
 		if err != nil {
@@ -154,6 +169,8 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /view/{slug...}", s.handleView)
 	s.router.HandleFunc("GET /search", s.handleSearchRedirect)
 	s.router.HandleFunc("GET /search/{slug...}", s.handleSearch)
+	s.router.HandleFunc("GET /users/{username}", s.handleProfile)
+	s.router.HandleFunc("GET /official/{username}", s.handleProfile)
 	s.router.HandleFunc("GET /proxy.gif", s.handleProxy)
 
 	// Serve everything in static/ under /static/
@@ -191,6 +208,10 @@ func (s *Server) handleCatchAll(w http.ResponseWriter, r *http.Request) {
 				} else {
 					s.handleSearchRedirect(w, r)
 				}
+				return
+			}
+			if action == "users" || action == "official" {
+				s.handleProfile(w, r)
 				return
 			}
 		}
@@ -407,6 +428,69 @@ func queryFromSearchPath(path string) string {
 	}
 	slug = strings.TrimSuffix(slug, "-gifs")
 	return strings.ReplaceAll(slug, "-", " ")
+}
+
+func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+
+	path := r.URL.Path
+	cacheStatus := "MISS"
+
+	var profilePage *scraper.ProfilePage
+	var err error
+
+	if s.profileCache != nil {
+		if cached, ok := s.profileCache.Get(path); ok {
+			profilePage = cached
+			cacheStatus = "HIT"
+		}
+	}
+
+	if profilePage == nil {
+		profilePage, err = scraper.GetProfile(path)
+		if err != nil {
+			log.Printf("Error scraping profile page: %v", err)
+			s.handleError(w, http.StatusInternalServerError)
+			return
+		}
+
+		if s.profileCache != nil {
+			s.profileCache.Set(path, profilePage)
+		}
+	}
+
+	w.Header().Set("Mezzo-Cache", cacheStatus)
+
+	displayName := profilePage.DisplayName
+	if displayName == "" {
+		displayName = profilePage.Username
+	}
+
+	data := ProfilePageData{
+		BasePage: BasePage{
+			Title:      displayName,
+			PatchesURL: s.patchesURL,
+			Version:    s.version,
+			Host:       r.Host,
+			Scheme:     scheme,
+		},
+		Username:    profilePage.Username,
+		DisplayName: displayName,
+		Tagline:     profilePage.Tagline,
+		AvatarURL:   profilePage.AvatarURL,
+		BannerURL:   profilePage.BannerURL,
+		UserType:    profilePage.UserType,
+		SocialLinks: profilePage.SocialLinks,
+		GIFs:        profilePage.GIFs,
+	}
+
+	s.render(w, "profile.html", data)
 }
 
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {

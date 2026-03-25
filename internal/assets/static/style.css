@@ -269,6 +269,29 @@ a {
 	main {
 		padding: 0 0.75rem 1.5rem;
 	}
+
+	.profile-banner img {
+		height: 120px;
+	}
+
+	.profile-info {
+		padding: 1rem;
+	}
+
+	.profile-avatar,
+	.profile-avatar-placeholder {
+		width: 56px;
+		height: 56px;
+		font-size: 1.4rem;
+	}
+
+	.profile-details h1 {
+		font-size: 1.15rem;
+	}
+
+	.profile-social-links {
+		padding: 0 1rem 1rem;
+	}
 }
 
 .metadata {
@@ -279,7 +302,6 @@ a {
 	border-radius: 12px;
 	display: block;
 	text-align: left;
-	max-width: 100%;
 	width: 100%;
 	max-width: 600px;
 }
@@ -434,3 +456,110 @@ a {
 .button:active {
 	transform: scale(0.94);
 }
+
+.profile-page h2 {
+	font-size: 1.15rem;
+	margin: 1.5rem 0 0.75rem;
+}
+
+.profile-header {
+	background: var(--metadata-bg);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	overflow: hidden;
+}
+
+.profile-banner img {
+	width: 100%;
+	height: 180px;
+	object-fit: cover;
+	display: block;
+}
+
+.profile-info {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 1.25rem 1.5rem;
+}
+
+.profile-avatar {
+	width: 72px;
+	height: 72px;
+	border-radius: 50%;
+	object-fit: cover;
+	background: var(--border);
+	flex-shrink: 0;
+}
+
+.profile-avatar-placeholder {
+	width: 72px;
+	height: 72px;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #2f80fa, #7c9fff);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.75rem;
+	font-weight: 700;
+	flex-shrink: 0;
+	text-transform: uppercase;
+}
+
+.profile-details h1 {
+	font-size: 1.4rem;
+	margin: 0;
+	line-height: 1.3;
+}
+
+.profile-details .badge {
+	font-size: 0.7rem;
+	background: #2f80fa;
+	color: #fff;
+	padding: 0.15em 0.5em;
+	border-radius: 4px;
+	vertical-align: middle;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.profile-tagline {
+	margin: 0.25rem 0 0;
+	color: var(--muted);
+	font-size: 0.95rem;
+}
+
+.profile-social-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	padding: 0 1.5rem 1.25rem;
+}
+
+.profile-social-links a {
+	display: inline-block;
+	background: var(--bg-fallback);
+	border: 1px solid var(--border);
+	padding: 0.3rem 0.7rem;
+	border-radius: 20px;
+	font-size: 0.8rem;
+	color: var(--main);
+	text-decoration: none;
+	transition: all 0.2s ease;
+}
+
+.profile-social-links a:hover {
+	background: #2f80fa;
+	color: #fff;
+	border-color: #2f80fa;
+}
+
+.profile-empty {
+	text-align: center;
+	padding: 3rem 1rem;
+	color: var(--muted);
+	font-size: 1.05rem;
+}
+

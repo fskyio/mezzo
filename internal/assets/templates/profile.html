@@ -1,0 +1,44 @@
+{{define "content"}}
+	<div class="profile-page">
+		<div class="profile-header">
+			{{if .BannerURL}}
+			<div class="profile-banner">
+				<img src="{{proxy .BannerURL}}" alt="{{.DisplayName}} banner">
+			</div>
+			{{end}}
+			<div class="profile-info">
+				{{if .AvatarURL}}
+				<img class="profile-avatar" src="{{proxy .AvatarURL}}" alt="{{.DisplayName}}">
+				{{else}}
+				<div class="profile-avatar-placeholder">{{printf "%.1s" .DisplayName}}</div>
+				{{end}}
+				<div class="profile-details">
+					<h1>{{.DisplayName}}{{if eq .UserType "partner"}} <span class="badge">Partner</span>{{end}}</h1>
+					{{if .Tagline}}<p class="profile-tagline">{{.Tagline}}</p>{{end}}
+				</div>
+			</div>
+			{{if .SocialLinks}}
+			<div class="profile-social-links">
+				{{range .SocialLinks}}
+				<a href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="{{.Tooltip}}">{{.Tooltip}}</a>
+				{{end}}
+			</div>
+			{{end}}
+		</div>
+
+		{{if .GIFs}}
+		<h2>GIFs</h2>
+		<div class="search-results">
+			{{range .GIFs}}
+			<a href="{{.URL}}">
+				<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}">
+			</a>
+			{{end}}
+		</div>
+		{{else}}
+		<div class="profile-empty">
+			<p>{{.DisplayName}} hasn't uploaded any GIFs.</p>
+		</div>
+		{{end}}
+	</div>
+{{end}}
