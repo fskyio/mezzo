@@ -25,11 +25,12 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"mezzo/internal/cache"
 	"mezzo/internal/client"
+	"mezzo/internal/config"
 	"mezzo/internal/scraper"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -41,11 +42,13 @@ const (
 
 // Server wires routes, templates, and the asset filesystem
 type Server struct {
-	router     *http.ServeMux
-	templates  map[string]*template.Template
-	patchesURL string
-	assets     fs.FS
-	version    string
+	router      *http.ServeMux
+	templates   map[string]*template.Template
+	patchesURL  string
+	assets      fs.FS
+	version     string
+	gifCache    *cache.Cache[*scraper.GifPage]
+	searchCache *cache.Cache[*scraper.SearchResponse]
 }
 
 // BasePage contains template data shared by all pages
@@ -90,13 +93,18 @@ type ErrorPage struct {
 }
 
 // New creates a new Server instance
-func New(assets fs.FS, version string) (*Server, error) {
+func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 	s := &Server{
 		router:     http.NewServeMux(),
-		patchesURL: os.Getenv("PATCHES_URL"),
+		patchesURL: cfg.PatchesURL,
 		assets:     assets,
 		templates:  make(map[string]*template.Template),
 		version:    version,
+	}
+
+	if !cfg.CacheDisabled {
+		s.gifCache = cache.New[*scraper.GifPage](cfg.CacheGifTTL, cfg.CacheGifMax)
+		s.searchCache = cache.New[*scraper.SearchResponse](cfg.CacheSearchTTL, cfg.CacheSearchMax)
 	}
 
 	funcMap := template.FuncMap{
@@ -221,13 +229,33 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
+	cacheStatus := "MISS"
 
-	gifPage, err := scraper.GetGif(path)
-	if err != nil {
-		log.Printf("Error scraping GIF page: %v", err)
-		s.handleError(w, http.StatusInternalServerError)
-		return
+	// Check cache first
+	var gifPage *scraper.GifPage
+	var err error
+
+	if s.gifCache != nil {
+		if cached, ok := s.gifCache.Get(path); ok {
+			gifPage = cached
+			cacheStatus = "HIT"
+		}
 	}
+
+	if gifPage == nil {
+		gifPage, err = scraper.GetGif(path)
+		if err != nil {
+			log.Printf("Error scraping GIF page: %v", err)
+			s.handleError(w, http.StatusInternalServerError)
+			return
+		}
+
+		if s.gifCache != nil {
+			s.gifCache.Set(path, gifPage)
+		}
+	}
+
+	w.Header().Set("Mezzo-Cache", cacheStatus)
 
 	data := ViewPage{
 		BasePage: BasePage{
@@ -284,29 +312,52 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	searchResp, err := scraper.APISearch(query, pos)
-	if err != nil {
-		// Fallback to HTML scraping (first page only, no pagination)
-		log.Printf("Tenor API failed, falling back to HTML scraping: %v", err)
-		results, scrapeErr := scraper.GetSearch(path)
-		if scrapeErr != nil {
-			log.Printf("HTML scraping fallback also failed: %v", scrapeErr)
-			s.handleError(w, http.StatusInternalServerError)
+	cacheStatus := "MISS"
+	cacheKey := query + "\x00" + pos
+
+	// Check cache first
+	var searchResp *scraper.SearchResponse
+
+	if s.searchCache != nil {
+		if cached, ok := s.searchCache.Get(cacheKey); ok {
+			searchResp = cached
+			cacheStatus = "HIT"
+		}
+	}
+
+	if searchResp == nil {
+		var err error
+		searchResp, err = scraper.APISearch(query, pos)
+		if err != nil {
+			// Fallback to HTML scraping (first page only, no pagination)
+			log.Printf("Tenor API failed, falling back to HTML scraping: %v", err)
+			results, scrapeErr := scraper.GetSearch(path)
+			if scrapeErr != nil {
+				log.Printf("HTML scraping fallback also failed: %v", scrapeErr)
+				s.handleError(w, http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Mezzo-Cache", "BYPASS")
+			data := SearchPage{
+				BasePage: BasePage{
+					Title:      "Search",
+					PatchesURL: s.patchesURL,
+					Version:    s.version,
+					Host:       r.Host,
+					Query:      query,
+				},
+				Results: results,
+			}
+			s.render(w, "search.html", data)
 			return
 		}
-		data := SearchPage{
-			BasePage: BasePage{
-				Title:      "Search",
-				PatchesURL: s.patchesURL,
-				Version:    s.version,
-				Host:       r.Host,
-				Query:      query,
-			},
-			Results: results,
+
+		if s.searchCache != nil {
+			s.searchCache.Set(cacheKey, searchResp)
 		}
-		s.render(w, "search.html", data)
-		return
 	}
+
+	w.Header().Set("Mezzo-Cache", cacheStatus)
 
 	// Build the next page URL, carrying the current pos as prev
 	var nextURL string

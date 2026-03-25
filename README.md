@@ -62,10 +62,18 @@ go build -o mezzo ./cmd/mezzo
 # Configuration
 The application can be configured using the following environment variables:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PATCHES_URL` | | Link to any patches that were applied. Only set this if your instance runs modified source code. |
-| `PORT` | `8006` | Port to run on. |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MEZZO_PORT` | No | `8006` | Port to run on. |
+| `MEZZO_PATCHES_URL` | No | | Link to any patches that were applied. Only set this if your instance runs modified source code. |
+| `MEZZO_CACHE_DISABLED` | No | `false` | Disable in-memory caching entirely. |
+| `MEZZO_CACHE_GIF_TTL` | No | `1h` | How long to cache GIF page metadata. Accepts Go duration strings (e.g. `30m`, `2h`). |
+| `MEZZO_CACHE_GIF_MAX` | No | `1000` | Maximum number of GIF pages to keep in cache. |
+| `MEZZO_CACHE_SEARCH_TTL` | No | `10m` | How long to cache search results. Accepts Go duration strings. |
+| `MEZZO_CACHE_SEARCH_MAX` | No | `500` | Maximum number of search result pages to keep in cache. |
+
+> [!NOTE]
+> For backward compatibility, `PORT` and `PATCHES_URL` (without the `MEZZO_` prefix) are still accepted as fallbacks.
 
 # License
 Copyright © 2026-present FSKY. This software is distributed under the [AGPL-3.0 license](LICENSE).

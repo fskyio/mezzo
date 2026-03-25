@@ -24,15 +24,14 @@ import (
 	"fmt"
 	"log"
 	"mezzo/internal/assets"
+	"mezzo/internal/config"
 	"mezzo/internal/server"
 	"net/http"
-	"os"
 )
 
 var version = "dev"
 
 func main() {
-	port := flag.String("port", "8006", "Port to run on")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -41,19 +40,16 @@ func main() {
 		return
 	}
 
-	if envPort := os.Getenv("PORT"); envPort != "" {
-		*port = envPort
-	}
+	cfg := config.Load()
 
-	srv, err := server.New(assets.Assets, version)
-
+	srv, err := server.New(assets.Assets, version, cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize server: %v", err)
 	}
 
-	log.Printf("Starting Mezzo on :%s", *port)
+	log.Printf("Starting Mezzo on :%s", cfg.Port)
 
-	if err := http.ListenAndServe(":"+*port, srv); err != nil {
+	if err := http.ListenAndServe(":"+cfg.Port, srv); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
