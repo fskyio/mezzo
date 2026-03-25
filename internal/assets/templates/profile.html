@@ -31,7 +31,7 @@
 		<div class="search-results">
 			{{range .GIFs}}
 			<a href="{{.URL}}">
-				<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}">
+				<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
 			</a>
 			{{end}}
 		</div>

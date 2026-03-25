@@ -108,8 +108,14 @@ func APISearch(query string, pos string) (*SearchResponse, error) {
 	for _, r := range apiResp.Results {
 		// Extract the preview image URL from tinygif format
 		imageURL := ""
+		width := 0
+		height := 0
 		if tinygif, ok := r.MediaFormats["tinygif"]; ok {
 			imageURL = tinygif.URL
+			if len(tinygif.Dims) >= 2 {
+				width = tinygif.Dims[0]
+				height = tinygif.Dims[1]
+			}
 		}
 
 		// Build the view path from itemurl
@@ -126,6 +132,8 @@ func APISearch(query string, pos string) (*SearchResponse, error) {
 			URL:      viewPath,
 			ImageURL: imageURL,
 			Alt:      r.ContentDesc,
+			Width:    width,
+			Height:   height,
 		})
 	}
 

@@ -38,6 +38,8 @@ type SearchResult struct {
 	URL      string
 	ImageURL string
 	Alt      string
+	Width    int
+	Height   int
 }
 
 // GifPage represents the scraped data from a GIF view page
@@ -219,6 +221,12 @@ func GetSearch(path string) ([]SearchResult, error) {
 			return
 		}
 
+		width, _ := img.Attr("width")
+		height, _ := img.Attr("height")
+		var w, h int
+		fmt.Sscanf(width, "%d", &w)
+		fmt.Sscanf(height, "%d", &h)
+
 		// Filter out gif-maker links
 		if strings.HasPrefix(href, "/gif-maker") {
 			return
@@ -228,6 +236,8 @@ func GetSearch(path string) ([]SearchResult, error) {
 			URL:      href,
 			ImageURL: src,
 			Alt:      alt,
+			Width:    w,
+			Height:   h,
 		})
 	})
 
@@ -296,7 +306,8 @@ type storeCacheGIF struct {
 }
 
 type storeCacheMedia struct {
-	URL string `json:"url"`
+	URL  string `json:"url"`
+	Dims []int  `json:"dims"`
 }
 
 // GetProfile scrapes a Tenor user profile page for user info and GIFs
@@ -373,6 +384,11 @@ func GetProfile(path string) (*ProfilePage, error) {
 			if !srcExists {
 				return
 			}
+			width, _ := img.Attr("width")
+			height, _ := img.Attr("height")
+			var w, h int
+			fmt.Sscanf(width, "%d", &w)
+			fmt.Sscanf(height, "%d", &h)
 			if strings.HasPrefix(href, "/gif-maker") {
 				return
 			}
@@ -380,6 +396,8 @@ func GetProfile(path string) (*ProfilePage, error) {
 				URL:      href,
 				ImageURL: src,
 				Alt:      alt,
+				Width:    w,
+				Height:   h,
 			})
 		})
 	}
@@ -464,11 +482,21 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 		if gifSet, ok := data.GIFs.SearchByUsername[key]; ok {
 			for _, g := range gifSet.Results {
 				imageURL := ""
+				width := 0
+				height := 0
 				// Prefer tinygif for thumbnails
 				if m, ok := g.MediaFormats["tinygif"]; ok && m.URL != "" {
 					imageURL = m.URL
+					if len(m.Dims) >= 2 {
+						width = m.Dims[0]
+						height = m.Dims[1]
+					}
 				} else if m, ok := g.MediaFormats["gif"]; ok && m.URL != "" {
 					imageURL = m.URL
+					if len(m.Dims) >= 2 {
+						width = m.Dims[0]
+						height = m.Dims[1]
+					}
 				}
 
 				viewPath := ""
@@ -492,6 +520,8 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 					URL:      viewPath,
 					ImageURL: imageURL,
 					Alt:      alt,
+					Width:    width,
+					Height:   height,
 				})
 			}
 			break

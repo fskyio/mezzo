@@ -1,16 +1,16 @@
 {{define "content"}}
 	<h1>Search</h1>
-	<div class="search-results">
+	<div class="search-results" role="region" aria-label="Search results">
 		{{range .Results}}
 		<a href="{{.URL}}">
-			<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}">
+			<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
 		</a>
 		{{end}}
 	</div>
 	{{if or .PrevURL .NextURL}}
-	<nav class="pagination">
-		{{if .PrevURL}}<a class="button" href="{{.PrevURL}}">&larr; Previous</a>{{end}}
-		{{if .NextURL}}<a class="button primary" href="{{.NextURL}}">Next &rarr;</a>{{end}}
+	<nav class="pagination" aria-label="Search pagination">
+		{{if .PrevURL}}<a class="button" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
+		{{if .NextURL}}<a class="button primary" href="{{.NextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
 	</nav>
 	{{end}}
 {{end}}
