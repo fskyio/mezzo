@@ -275,6 +275,7 @@ type storeCacheProfile struct {
 type storeCachePartnerLink struct {
 	URL     string `json:"url"`
 	Tooltip string `json:"tooltip"`
+	Icon    string `json:"icon"`
 }
 
 type storeCacheGIFs struct {
@@ -441,9 +442,13 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 	// Extract social links
 	for _, link := range prof.PartnerLinks {
 		if link.URL != "" {
+			label := link.Tooltip
+			if label == "" {
+				label = link.Icon
+			}
 			profile.SocialLinks = append(profile.SocialLinks, SocialLink{
 				URL:     link.URL,
-				Tooltip: link.Tooltip,
+				Tooltip: label,
 			})
 		}
 	}

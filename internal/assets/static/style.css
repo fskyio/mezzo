@@ -547,6 +547,7 @@ a {
 	font-size: 0.8rem;
 	color: var(--main);
 	text-decoration: none;
+	text-transform: capitalize;
 	transition: all 0.2s ease;
 }
 
