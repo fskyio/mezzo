@@ -15,3 +15,7 @@ go.work.sum
 
 # goreleaser builds
 dist/
+
+# Environment files
+.env
+.env.local

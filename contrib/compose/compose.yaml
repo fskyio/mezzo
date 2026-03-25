@@ -1,5 +1,5 @@
 services:
-  redlib:
+  mezzo:
     image: foundry.fsky.io/fsky/mezzo:latest
     restart: always
     container_name: "mezzo"
@@ -11,5 +11,12 @@ services:
     cap_drop:
       - ALL
     #environment:
-    # - PORT=8006
-    # - PATCHES_URL=
+    # - MEZZO_PORT=8006
+    # - MEZZO_PATCHES_URL=
+    # - MEZZO_CACHE_DISABLED=false
+    # - MEZZO_CACHE_GIF_TTL=1h
+    # - MEZZO_CACHE_GIF_MAX=1000
+    # - MEZZO_CACHE_SEARCH_TTL=10m
+    # - MEZZO_CACHE_SEARCH_MAX=500
+    # - MEZZO_CACHE_PROFILE_TTL=30m
+    # - MEZZO_CACHE_PROFILE_MAX=200

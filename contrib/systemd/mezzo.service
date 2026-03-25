@@ -5,8 +5,15 @@ After=network.service
 [Service]
 DynamicUser=yes
 # Default Values
-#Environment=PORT=8006
-#Environment=PATCHES_URL=
+#Environment=MEZZO_PORT=8006
+#Environment=MEZZO_PATCHES_URL=
+#Environment=MEZZO_CACHE_DISABLED=false
+#Environment=MEZZO_CACHE_GIF_TTL=1h
+#Environment=MEZZO_CACHE_GIF_MAX=1000
+#Environment=MEZZO_CACHE_SEARCH_TTL=10m
+#Environment=MEZZO_CACHE_SEARCH_MAX=500
+#Environment=MEZZO_CACHE_PROFILE_TTL=30m
+#Environment=MEZZO_CACHE_PROFILE_MAX=200
 ExecStart=/usr/local/bin/mezzo
 
 # Hardening

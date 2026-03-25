@@ -6,8 +6,13 @@ command_background=true
 pidfile="/run/${RC_SVCNAME}.pid"
 command_user="mezzo:mezzo"
 
-export PORT="${PORT:-8006}"
-export PATCHES_URL="${PATCHES_URL:-}"
+export MEZZO_PORT="${MEZZO_PORT:-8006}"
+export MEZZO_PATCHES_URL="${MEZZO_PATCHES_URL:-}"
+export MEZZO_CACHE_DISABLED="${MEZZO_CACHE_DISABLED:-false}"
+export MEZZO_CACHE_GIF_TTL="${MEZZO_CACHE_GIF_TTL:-1h}"
+export MEZZO_CACHE_GIF_MAX="${MEZZO_CACHE_GIF_MAX:-1000}"
+export MEZZO_CACHE_SEARCH_TTL="${MEZZO_CACHE_SEARCH_TTL:-10m}"
+export MEZZO_CACHE_SEARCH_MAX="${MEZZO_CACHE_SEARCH_MAX:-500}"
 
 depend() {
 	need net

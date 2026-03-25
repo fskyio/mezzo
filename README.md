@@ -1,8 +1,5 @@
 # Mezzo
-Mezzo is a privacy-respecting front-end to Tenor.
-
-> [!NOTE]
-> This project is incomplete. The only supported endpoints are `/view` and `/search`. See the [feature completeness roadmap](https://foundry.fsky.io/fsky/mezzo/projects/5) to find out what's left to add.
+Mezzo is an open-source, privacy-focused front-end for Tenor that allows you to browse and view GIFs without Google's tracking and advertising systems.
 
 # Instances
 For public instances of Mezzo, see [mezzo-instances](https://foundry.fsky.io/fsky/mezzo-instances).
@@ -71,6 +68,8 @@ The application can be configured using the following environment variables:
 | `MEZZO_CACHE_GIF_MAX` | No | `1000` | Maximum number of GIF pages to keep in cache. |
 | `MEZZO_CACHE_SEARCH_TTL` | No | `10m` | How long to cache search results. Accepts Go duration strings. |
 | `MEZZO_CACHE_SEARCH_MAX` | No | `500` | Maximum number of search result pages to keep in cache. |
+| `MEZZO_CACHE_PROFILE_TTL` | No | `30m` | How long to cache user profile pages. Accepts Go duration strings. |
+| `MEZZO_CACHE_PROFILE_MAX` | No | `200` | Maximum number of user profiles to keep in cache. |
 
 > [!NOTE]
 > For backward compatibility, `PORT` and `PATCHES_URL` (without the `MEZZO_` prefix) are still accepted as fallbacks.
