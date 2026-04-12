@@ -193,7 +193,11 @@ pre code {
 }
 
 .view-page {
-	text-align: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2rem;
+	align-items: flex-start;
+	justify-content: center;
 }
 
 .view-page h1 {
@@ -202,10 +206,12 @@ pre code {
 	line-height: 1.4;
 }
 
-.view-page img {
+.view-page > img {
 	max-width: 100%;
 	max-height: 80vh;
 	border-radius: 10px;
+	flex-shrink: 0;
+	align-self: flex-start;
 }
 
 .error-page {
@@ -295,14 +301,14 @@ a {
 }
 
 .metadata {
-	margin: 1.5rem auto 0;
+	margin: 0;
 	padding: 1.5rem;
 	background: var(--metadata-bg);
 	border: 1px solid var(--border);
 	border-radius: 12px;
-	display: block;
 	text-align: left;
-	width: 100%;
+	flex: 1;
+	min-width: min(100%, 280px);
 	max-width: 600px;
 }
 
