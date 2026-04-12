@@ -20,14 +20,17 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"mezzo/internal/assets"
 	"mezzo/internal/config"
 	"mezzo/internal/server"
+	"net"
 	"net/http"
 	"os"
+	"sync"
 )
 
 var version = "dev"
@@ -58,8 +61,29 @@ func main() {
 
 	slog.Info("starting mezzo", "port", cfg.Port)
 
-	if err := http.ListenAndServe(":"+cfg.Port, srv); err != nil {
-		slog.Error("server error", "error", err)
+	httpSrv := &http.Server{Handler: srv}
+
+	ln4, err4 := net.Listen("tcp4", ":"+cfg.Port)
+	ln6, err6 := net.Listen("tcp6", ":"+cfg.Port)
+	if err4 != nil && err6 != nil {
+		slog.Error("failed to listen on any address", "ipv4_error", err4, "ipv6_error", err6)
 		os.Exit(1)
 	}
+
+	var wg sync.WaitGroup
+	listen := func(ln net.Listener) {
+		defer wg.Done()
+		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("listener error", "error", err)
+		}
+	}
+	if err4 == nil {
+		wg.Add(1)
+		go listen(ln4)
+	}
+	if err6 == nil {
+		wg.Add(1)
+		go listen(ln6)
+	}
+	wg.Wait()
 }
