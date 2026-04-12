@@ -24,7 +24,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"mezzo/internal/cache"
 	"mezzo/internal/client"
 	"mezzo/internal/config"
@@ -160,9 +160,33 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 	return s, nil
 }
 
+// responseWriter wraps http.ResponseWriter to capture the status code for logging.
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(status int) {
+	rw.status = status
+	rw.ResponseWriter.WriteHeader(status)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s", time.Now().Format(time.RFC3339), r.URL.String())
-	s.router.ServeHTTP(w, r)
+	start := time.Now()
+	rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+	s.router.ServeHTTP(rw, r)
+
+	args := []any{
+		"method", r.Method,
+		"path", r.URL.RequestURI(),
+		"status", rw.status,
+		"duration", time.Since(start),
+	}
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		slog.Debug("request", args...)
+	} else {
+		slog.Info("request", args...)
+	}
 }
 
 func (s *Server) routes() {
@@ -267,7 +291,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	if gifPage == nil {
 		gifPage, err = scraper.GetGif(path)
 		if err != nil {
-			log.Printf("Error scraping GIF page: %v", err)
+			slog.Error("failed to scrape GIF page", "error", err)
 			s.handleError(w, http.StatusInternalServerError)
 			return
 		}
@@ -353,10 +377,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		searchResp, err = scraper.APISearch(query, pos)
 		if err != nil {
 			// Fallback to HTML scraping (first page only, no pagination)
-			log.Printf("Tenor API failed, falling back to HTML scraping: %v", err)
+			slog.Warn("tenor API failed, falling back to HTML scraping", "error", err)
 			results, scrapeErr := scraper.GetSearch(path)
 			if scrapeErr != nil {
-				log.Printf("HTML scraping fallback also failed: %v", scrapeErr)
+				slog.Error("HTML scraping fallback also failed", "error", scrapeErr)
 				s.handleError(w, http.StatusInternalServerError)
 				return
 			}
@@ -457,7 +481,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	if profilePage == nil {
 		profilePage, err = scraper.GetProfile(path)
 		if err != nil {
-			log.Printf("Error scraping profile page: %v", err)
+			slog.Error("failed to scrape profile page", "error", err)
 			s.handleError(w, http.StatusInternalServerError)
 			return
 		}
@@ -512,7 +536,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := client.Default.Get(targetURL)
 	if err != nil {
-		log.Printf("Error fetching proxy URL: %v", err)
+		slog.Error("failed to fetch proxy URL", "error", err)
 		s.handleError(w, http.StatusBadGateway)
 		return
 	}
@@ -527,7 +551,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
-		log.Printf("Error copying proxy body: %v", err)
+		slog.Error("failed to copy proxy body", "error", err)
 	}
 }
 
@@ -549,12 +573,12 @@ func (s *Server) handleError(w http.ResponseWriter, code int) {
 func (s *Server) render(w http.ResponseWriter, name string, data interface{}) {
 	tmpl, ok := s.templates[name]
 	if !ok {
-		log.Printf("Template %s not found", name)
+		slog.Error("template not found", "name", name)
 		return
 	}
 
 	err := tmpl.ExecuteTemplate(w, "base", data)
 	if err != nil {
-		log.Printf("Error executing template %s: %v", name, err)
+		slog.Error("failed to execute template", "name", name, "error", err)
 	}
 }

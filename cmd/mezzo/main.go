@@ -22,17 +22,19 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"mezzo/internal/assets"
 	"mezzo/internal/config"
 	"mezzo/internal/server"
 	"net/http"
+	"os"
 )
 
 var version = "dev"
 
 func main() {
 	showVersion := flag.Bool("version", false, "Print version and exit")
+	verbose := flag.Bool("verbose", false, "Enable debug logging")
 	flag.Parse()
 
 	if *showVersion {
@@ -40,16 +42,24 @@ func main() {
 		return
 	}
 
+	level := slog.LevelInfo
+	if *verbose {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+
 	cfg := config.Load()
 
 	srv, err := server.New(assets.Assets, version, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize server: %v", err)
+		slog.Error("failed to initialize server", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Starting Mezzo on :%s", cfg.Port)
+	slog.Info("starting mezzo", "port", cfg.Port)
 
 	if err := http.ListenAndServe(":"+cfg.Port, srv); err != nil {
-		log.Fatalf("Server error: %v", err)
+		slog.Error("server error", "error", err)
+		os.Exit(1)
 	}
 }
