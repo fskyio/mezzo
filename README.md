@@ -1,6 +1,20 @@
 # Mezzo
 Mezzo is an open-source, privacy-focused front-end for Tenor that allows you to browse and view GIFs without Google's tracking and advertising systems.
 
+<details>
+<summary>Click to see screenshots</summary>
+
+![Showcase of the GIF view page](./docs/images/view.png)
+*Showcase of the GIF view page*
+
+![Showcase of the user profile page](./docs/images/user.png)
+*Showcase of the user profile page*
+
+![Showcase of the search page](./docs/images/search.png)
+*Showcase of the search page*
+
+</details>
+
 # Instances
 For public instances of Mezzo, see [mezzo-instances](https://foundry.fsky.io/fsky/mezzo-instances).
 
