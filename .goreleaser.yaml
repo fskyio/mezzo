@@ -11,6 +11,8 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
     goos:
       - linux
       - windows
@@ -32,6 +34,66 @@ archives:
 
 checksum:
   name_template: 'checksums.txt'
+
+nfpms:
+  - id: mezzo
+    ids:
+      - mezzo
+    package_name: mezzo
+    file_name_template: "{{ .ConventionalFileName }}"
+    homepage: https://mezzo.fsky.io/
+    maintainer: FSKY <development@fsky.io>
+    description: |-
+      Mezzo is a privacy-focused front-end for Tenor that lets you browse and
+      view GIFs without Google's tracking and advertising systems.
+    license: AGPL-3.0-or-later
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    bindir: /usr/bin
+    section: web
+    priority: optional
+    umask: 0o022
+    contents:
+      - src: ./packaging/systemd/mezzo.service
+        dst: /lib/systemd/system/mezzo.service
+        packager: deb
+      - src: ./packaging/systemd/mezzo.service
+        dst: /usr/lib/systemd/system/mezzo.service
+        packager: rpm
+      - src: ./packaging/systemd/mezzo.service
+        dst: /usr/lib/systemd/system/mezzo.service
+        packager: archlinux
+      - src: ./packaging/env/mezzo.default
+        dst: /etc/default/mezzo
+        type: config|noreplace
+        packager: deb
+      - src: ./packaging/env/mezzo.sysconfig
+        dst: /etc/sysconfig/mezzo
+        type: config|noreplace
+        packager: rpm
+      - src: ./packaging/env/mezzo.confd
+        dst: /etc/conf.d/mezzo
+        type: config|noreplace
+        packager: archlinux
+      - src: ./LICENSE
+        dst: /usr/share/doc/mezzo/LICENSE
+      - src: ./README.md
+        dst: /usr/share/doc/mezzo/README.md
+    scripts:
+      postinstall: ./packaging/scripts/postinstall.sh
+      postremove: ./packaging/scripts/postremove.sh
+    overrides:
+      rpm:
+        dependencies:
+          - systemd
+      archlinux:
+        dependencies:
+          - systemd
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
 
 kos:
   - repositories:

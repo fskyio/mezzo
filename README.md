@@ -57,6 +57,23 @@ Binaries are provided for Linux, Windows, macOS, FreeBSD, OpenBSD, NetBSD, and I
 
 Once downloaded, simply extract the tarball or zip file, and run the executable. 
 
+## Linux packages
+Linux packages are also published for Debian/Ubuntu (`.deb`), RPM-based distributions (`.rpm`), and Arch Linux (`.pkg.tar.zst`).
+
+The packages install:
+- the `mezzo` binary into `/usr/bin`
+- a systemd service unit
+- a distro-appropriate environment file:
+  `/etc/default/mezzo` on Debian
+  `/etc/sysconfig/mezzo` on RPM-based systems
+  `/etc/conf.d/mezzo` on Arch Linux
+
+After installation, edit the environment file if needed, then enable the service:
+
+```bash
+sudo systemctl enable --now mezzo
+```
+
 ### Running with systemd or other service managers
 For systemd, you can find an example service file in [`contrib/systemd/mezzo.service`](contrib/systemd/mezzo.service).
 

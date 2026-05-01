@@ -1,0 +1,14 @@
+# Listening port
+MEZZO_PORT=8006
+
+# Patches URL (leave empty or comment out if running vanilla Mezzo)
+# MEZZO_PATCHES_URL=
+
+# Cache settings
+# MEZZO_CACHE_DISABLED=false
+# MEZZO_CACHE_GIF_TTL=1h
+# MEZZO_CACHE_GIF_MAX=1000
+# MEZZO_CACHE_SEARCH_TTL=10m
+# MEZZO_CACHE_SEARCH_MAX=500
+# MEZZO_CACHE_PROFILE_TTL=30m
+# MEZZO_CACHE_PROFILE_MAX=200
