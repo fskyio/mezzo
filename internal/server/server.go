@@ -25,6 +25,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"path"
 	"mezzo/internal/cache"
 	"mezzo/internal/client"
 	"mezzo/internal/config"
@@ -544,6 +545,9 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.Header().Set("Cache-Control", CacheControl)
+	if filename := path.Base(targetURL); filename != "" && filename != "." {
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		w.WriteHeader(resp.StatusCode)
