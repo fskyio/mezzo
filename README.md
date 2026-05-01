@@ -55,7 +55,11 @@ systemctl --user start mezzo.service
 ## From a binary
 Binaries are provided for Linux, Windows, macOS, FreeBSD, OpenBSD, NetBSD, and Illumos for amd64, arm64, and i386. You can download them from the [releases page](https://foundry.fsky.io/fsky/mezzo/releases).
 
-Once downloaded, simply extract the tarball or zip file, and run the executable. 
+Once downloaded, run the binary directly. On Unix-like systems you may need to mark it as executable first:
+
+```bash
+chmod +x mezzo
+```
 
 ## Linux packages
 Linux packages are also published for Debian/Ubuntu (`.deb`), RPM-based distributions (`.rpm`), and Arch Linux (`.pkg.tar.zst`).
