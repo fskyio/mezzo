@@ -20,18 +20,19 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"log/slog"
-	"path"
 	"mezzo/internal/cache"
 	"mezzo/internal/client"
 	"mezzo/internal/config"
 	"mezzo/internal/scraper"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 )
@@ -92,7 +93,9 @@ type SearchPage struct {
 // ErrorPage contains template data for error pages
 type ErrorPage struct {
 	BasePage
-	Code int
+	Code    int
+	Heading string
+	Message string
 }
 
 // ProfilePageData contains template data for the user profile page
@@ -293,7 +296,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		gifPage, err = scraper.GetGif(path)
 		if err != nil {
 			slog.Error("failed to scrape GIF page", "error", err)
-			s.handleError(w, http.StatusInternalServerError)
+			s.handleError(w, scrapeStatusCode(err))
 			return
 		}
 
@@ -337,16 +340,13 @@ func (s *Server) handleSearchRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.Contains(q, "tenor.com/view/") {
-		parts := strings.Split(q, "tenor.com/view/")
-		if len(parts) == 2 && parts[1] != "" {
-			http.Redirect(w, r, "/view/"+parts[1], http.StatusMovedPermanently)
-			return
-		}
+	if viewPath := tenorViewPath(q); viewPath != "" {
+		http.Redirect(w, r, viewPath, http.StatusFound)
+		return
 	}
 
 	slug := strings.ReplaceAll(q, " ", "-") + "-gifs"
-	http.Redirect(w, r, "/search/"+slug, http.StatusMovedPermanently)
+	http.Redirect(w, r, "/search/"+slug, http.StatusFound)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -382,7 +382,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			results, scrapeErr := scraper.GetSearch(path)
 			if scrapeErr != nil {
 				slog.Error("HTML scraping fallback also failed", "error", scrapeErr)
-				s.handleError(w, http.StatusInternalServerError)
+				s.handleError(w, scrapeStatusCode(scrapeErr))
 				return
 			}
 			w.Header().Set("Mezzo-Cache", "BYPASS")
@@ -457,6 +457,30 @@ func queryFromSearchPath(path string) string {
 	return strings.ReplaceAll(slug, "-", " ")
 }
 
+func tenorViewPath(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if parsed.Host == "" {
+		parsed, err = url.Parse("https://" + raw)
+		if err != nil {
+			return ""
+		}
+	}
+
+	host := parsed.Hostname()
+	if host != "tenor.com" && !strings.HasSuffix(host, ".tenor.com") {
+		return ""
+	}
+
+	slug, ok := strings.CutPrefix(parsed.EscapedPath(), "/view/")
+	if !ok || slug == "" {
+		return ""
+	}
+	return "/view/" + slug
+}
+
 func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	scheme := "http"
 	if r.TLS != nil {
@@ -483,7 +507,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		profilePage, err = scraper.GetProfile(path)
 		if err != nil {
 			slog.Error("failed to scrape profile page", "error", err)
-			s.handleError(w, http.StatusInternalServerError)
+			s.handleError(w, scrapeStatusCode(err))
 			return
 		}
 
@@ -560,18 +584,62 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleError(w http.ResponseWriter, code int) {
-	// Write the status code and render the error template
 	w.WriteHeader(code)
+	details := errorDetails(code)
 	data := ErrorPage{
 		BasePage: BasePage{
-			Title:      fmt.Sprintf("%d", code),
+			Title:      details.heading,
 			PatchesURL: s.patchesURL,
 			Version:    s.version,
 			Host:       "",
 		},
-		Code: code,
+		Code:    code,
+		Heading: details.heading,
+		Message: details.message,
 	}
 	s.render(w, "error.html", data)
+}
+
+type errorPageDetails struct {
+	heading string
+	message string
+}
+
+func errorDetails(code int) errorPageDetails {
+	switch code {
+	case http.StatusBadRequest:
+		return errorPageDetails{
+			heading: "Bad request",
+			message: "Mezzo could not use that request as-is.",
+		}
+	case http.StatusNotFound:
+		return errorPageDetails{
+			heading: "Not found",
+			message: "That page does not exist here, or Tenor no longer has it.",
+		}
+	case http.StatusBadGateway:
+		return errorPageDetails{
+			heading: "Tenor did not respond",
+			message: "Mezzo reached Tenor, but Tenor returned an error or the media request failed.",
+		}
+	default:
+		return errorPageDetails{
+			heading: http.StatusText(code),
+			message: "Mezzo hit an unexpected problem while handling this page.",
+		}
+	}
+}
+
+func scrapeStatusCode(err error) int {
+	var httpErr *scraper.HTTPError
+	if errors.As(err, &httpErr) {
+		if httpErr.StatusCode == http.StatusNotFound {
+			return http.StatusNotFound
+		}
+		return http.StatusBadGateway
+	}
+
+	return http.StatusInternalServerError
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data interface{}) {

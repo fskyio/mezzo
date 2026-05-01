@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,7 +31,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
+	"time"
 )
 
 var version = "dev"
@@ -61,7 +65,12 @@ func main() {
 
 	slog.Info("starting mezzo", "port", cfg.Port)
 
-	httpSrv := &http.Server{Handler: srv}
+	httpSrv := &http.Server{
+		Handler:           srv,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	ln4, err4 := net.Listen("tcp4", ":"+cfg.Port)
 	ln6, err6 := net.Listen("tcp6", ":"+cfg.Port)
@@ -85,5 +94,20 @@ func main() {
 		wg.Add(1)
 		go listen(ln6)
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		slog.Info("shutting down mezzo")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("failed to shut down gracefully", "error", err)
+		}
+	}()
+
 	wg.Wait()
 }

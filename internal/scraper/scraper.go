@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mezzo/internal/client"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -32,6 +33,16 @@ import (
 const (
 	TenorBaseURL = "https://tenor.com"
 )
+
+// HTTPError records a non-OK response from Tenor.
+type HTTPError struct {
+	StatusCode int
+	Status     string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("status code error: %d %s", e.StatusCode, e.Status)
+}
 
 // SearchResult represents a single item in the search results
 type SearchResult struct {
@@ -556,8 +567,8 @@ func FetchDocument(url string) (*goquery.Document, error) {
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	if res.StatusCode != http.StatusOK {
+		return nil, &HTTPError{StatusCode: res.StatusCode, Status: res.Status}
 	}
 
 	return goquery.NewDocumentFromReader(res.Body)
