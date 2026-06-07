@@ -9,7 +9,7 @@
 	</div>
 	{{if or .PrevURL .NextURL}}
 	<nav class="pagination" aria-label="Search pagination">
-		{{if .PrevURL}}<a class="button" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
+		{{if .PrevURL}}<a class="button secondary" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
 		{{if .NextURL}}<a class="button primary" href="{{.NextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
 	</nav>
 	{{end}}

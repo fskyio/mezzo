@@ -9,11 +9,11 @@
 	--input-border: #ccc;
 	--input-focus: #7c9fff;
 	--metadata-bg: #ebecee;
-	--button: #222222;
-	--button-bg: #dad9d9;
-	--button-top-shadow: rgba(255, 255, 255, 0.1);
-	--button-bottom-shadow: rgba(122, 122, 122, 0.1);
-	--button-bg-hover: #cfcfcf;
+	--button: #183352;
+	--button-bg: #dfeaf8;
+	--button-bg-hover: #d1def0;
+	--button-top-shadow: rgba(255, 255, 255, 0.45);
+	--button-bottom-shadow: rgba(55, 82, 122, 0.12);
 	--accent: #2f80fa;
 	--accent-hover: #1b74fa;
 }
@@ -463,12 +463,21 @@ a {
 	background-color: var(--accent);
 }
 
+.button.secondary {
+	color: var(--button);
+	background-color: var(--button-bg);
+}
+
 .button:hover {
 	background-color: var(--button-bg-hover);
 }
 
 .button.primary:hover {
 	background-color: var(--accent-hover);
+}
+
+.button.secondary:hover {
+	background-color: var(--button-bg-hover);
 }
 
 .button:active {
