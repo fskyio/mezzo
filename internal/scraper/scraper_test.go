@@ -110,6 +110,10 @@ func TestParseStoreCache(t *testing.T) {
 						"690": "https://media.tenor.com/banner-690.png",
 						"1110": "https://media.tenor.com/banner-1110.png"
 					},
+					"partnercta": {
+						"url": "https://example.com/watch",
+						"text": "Watch now"
+					},
 					"partnerlinks": [
 						{
 							"url": "https://example.com",
@@ -120,6 +124,11 @@ func TestParseStoreCache(t *testing.T) {
 							"url": "https://social.example/mezzo",
 							"tooltip": "",
 							"icon": "social"
+						},
+						{
+							"url": "https://www.generic.example/mezzo",
+							"tooltip": "",
+							"icon": "other"
 						},
 						{
 							"url": "",
@@ -196,14 +205,26 @@ func TestParseStoreCache(t *testing.T) {
 		t.Fatalf("BannerURL = %q, want largest banner", profile.BannerURL)
 	}
 
-	if len(profile.SocialLinks) != 2 {
-		t.Fatalf("len(SocialLinks) = %d, want 2", len(profile.SocialLinks))
+	if len(profile.SocialLinks) != 3 {
+		t.Fatalf("len(SocialLinks) = %d, want 3", len(profile.SocialLinks))
 	}
 	if profile.SocialLinks[0].Tooltip != "Website" {
 		t.Fatalf("first social tooltip = %q, want Website", profile.SocialLinks[0].Tooltip)
 	}
 	if profile.SocialLinks[1].Tooltip != "social" {
 		t.Fatalf("second social tooltip = %q, want icon fallback", profile.SocialLinks[1].Tooltip)
+	}
+	if profile.SocialLinks[2].Tooltip != "generic.example" {
+		t.Fatalf("third social tooltip = %q, want hostname fallback", profile.SocialLinks[2].Tooltip)
+	}
+	if profile.CTA == nil {
+		t.Fatal("CTA = nil, want parsed CTA")
+	}
+	if profile.CTA.URL != "https://example.com/watch" {
+		t.Fatalf("CTA URL = %q, want https://example.com/watch", profile.CTA.URL)
+	}
+	if profile.CTA.Label != "Watch now" {
+		t.Fatalf("CTA Label = %q, want Watch now", profile.CTA.Label)
 	}
 
 	if len(profile.GIFs) != 2 {

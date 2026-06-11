@@ -109,6 +109,7 @@ type ProfilePageData struct {
 	BannerURL   string
 	UserType    string
 	SocialLinks []scraper.SocialLink
+	CTA         *scraper.ProfileCTA
 	GIFs        []scraper.SearchResult
 }
 
@@ -539,6 +540,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		BannerURL:   profilePage.BannerURL,
 		UserType:    profilePage.UserType,
 		SocialLinks: profilePage.SocialLinks,
+		CTA:         profilePage.CTA,
 		GIFs:        profilePage.GIFs,
 	}
 

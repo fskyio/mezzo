@@ -17,10 +17,19 @@
 					{{if .Tagline}}<p class="profile-tagline">{{.Tagline}}</p>{{end}}
 				</div>
 			</div>
-			{{if .SocialLinks}}
-			<div class="profile-social-links">
-				{{range .SocialLinks}}
-				<a href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="{{.Tooltip}}">{{.Tooltip}}</a>
+			{{if or .SocialLinks .CTA}}
+			<div class="profile-actions">
+				{{if .SocialLinks}}
+				<div class="profile-social-links">
+					{{range .SocialLinks}}
+					<a href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="{{.Tooltip}}">{{.Tooltip}}</a>
+					{{end}}
+				</div>
+				{{end}}
+				{{with .CTA}}
+				<div class="profile-cta">
+					<a class="button primary" href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Label}}</a>
+				</div>
 				{{end}}
 			</div>
 			{{end}}

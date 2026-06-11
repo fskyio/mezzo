@@ -261,6 +261,12 @@ type SocialLink struct {
 	Tooltip string
 }
 
+// ProfileCTA represents the prominent call-to-action button on a user's profile.
+type ProfileCTA struct {
+	URL   string
+	Label string
+}
+
 // ProfilePage represents scraped data from a Tenor user profile page
 type ProfilePage struct {
 	Username    string
@@ -270,6 +276,7 @@ type ProfilePage struct {
 	BannerURL   string
 	UserType    string // "partner" or "user"
 	SocialLinks []SocialLink
+	CTA         *ProfileCTA
 	GIFs        []SearchResult
 }
 
@@ -291,12 +298,18 @@ type storeCacheProfile struct {
 	Avatars       map[string]string       `json:"avatars"`
 	PartnerBanner map[string]string       `json:"partnerbanner"`
 	PartnerLinks  []storeCachePartnerLink `json:"partnerlinks"`
+	PartnerCTA    storeCachePartnerCTA    `json:"partnercta"`
 }
 
 type storeCachePartnerLink struct {
 	URL     string `json:"url"`
 	Tooltip string `json:"tooltip"`
 	Icon    string `json:"icon"`
+}
+
+type storeCachePartnerCTA struct {
+	URL  string `json:"url"`
+	Text string `json:"text"`
 }
 
 type storeCacheGIFs struct {
@@ -471,14 +484,18 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 	// Extract social links
 	for _, link := range prof.PartnerLinks {
 		if link.URL != "" {
-			label := link.Tooltip
-			if label == "" {
-				label = link.Icon
-			}
+			label := profileLinkLabel(link.URL, link.Tooltip, link.Icon)
 			profile.SocialLinks = append(profile.SocialLinks, SocialLink{
 				URL:     link.URL,
 				Tooltip: label,
 			})
+		}
+	}
+
+	if prof.PartnerCTA.URL != "" {
+		profile.CTA = &ProfileCTA{
+			URL:   prof.PartnerCTA.URL,
+			Label: profileLinkLabel(prof.PartnerCTA.URL, prof.PartnerCTA.Text, ""),
 		}
 	}
 
@@ -540,6 +557,30 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 	}
 
 	return profile, true
+}
+
+func profileLinkLabel(rawURL, tooltip, icon string) string {
+	if label := strings.TrimSpace(tooltip); label != "" {
+		return label
+	}
+
+	if label := strings.TrimSpace(icon); label != "" {
+		switch strings.ToLower(label) {
+		case "other", "link":
+			// These are Tenor's generic icon buckets, not useful human labels.
+		default:
+			return strings.ReplaceAll(label, "_", " ")
+		}
+	}
+
+	if u, err := url.Parse(rawURL); err == nil {
+		host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+		if host != "" {
+			return host
+		}
+	}
+
+	return "Link"
 }
 
 // extractURLFromStyle extracts a URL from a CSS background-image style string
