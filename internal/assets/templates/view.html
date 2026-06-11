@@ -8,6 +8,8 @@
 			<div class="author-section">
 				{{if .AuthorAvatar}}
 				<img class="avatar" src="{{proxy .AuthorAvatar}}" alt="{{.Author}}">
+				{{else if .Author}}
+				<div class="avatar avatar-placeholder">{{printf "%.1s" .Author}}</div>
 				{{end}}
 				<div class="author-info">
 					{{if .Author}}
