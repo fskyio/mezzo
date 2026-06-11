@@ -22,6 +22,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"mezzo/internal/scraper"
@@ -121,6 +122,74 @@ func TestTenorViewPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tenorViewPath(tt.raw); got != tt.want {
 				t.Fatalf("tenorViewPath(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTenorURLForRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "view page",
+			raw:  "http://mezzo.test/view/cat-wave-12345",
+			want: "https://tenor.com/view/cat-wave-12345",
+		},
+		{
+			name: "search page omits local pagination query",
+			raw:  "http://mezzo.test/search/funny-cats-gifs?pos=abc",
+			want: "https://tenor.com/search/funny-cats-gifs",
+		},
+		{
+			name: "profile page",
+			raw:  "http://mezzo.test/users/example",
+			want: "https://tenor.com/users/example",
+		},
+		{
+			name: "locale prefixed page",
+			raw:  "http://mezzo.test/en-us/view/cat-wave-12345",
+			want: "https://tenor.com/en-us/view/cat-wave-12345",
+		},
+		{
+			name: "escaped path",
+			raw:  "http://mezzo.test/view/cat%20wave-12345",
+			want: "https://tenor.com/view/cat%20wave-12345",
+		},
+		{
+			name: "unknown page",
+			raw:  "http://mezzo.test/about",
+			want: "https://tenor.com/about",
+		},
+		{
+			name: "unknown page preserves query",
+			raw:  "http://mezzo.test/legal/privacy?hl=en",
+			want: "https://tenor.com/legal/privacy?hl=en",
+		},
+		{
+			name: "missing route slug",
+			raw:  "http://mezzo.test/view/",
+			want: "https://tenor.com/view/",
+		},
+		{
+			name: "proxy request",
+			raw:  "http://mezzo.test/proxy.gif?url=https%3A%2F%2Fexample.com%2Fbad.gif",
+			want: "",
+		},
+		{
+			name: "static request",
+			raw:  "http://mezzo.test/static/missing.png",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.raw, nil)
+			if got := tenorURLForRequest(req); got != tt.want {
+				t.Fatalf("tenorURLForRequest(%q) = %q, want %q", tt.raw, got, tt.want)
 			}
 		})
 	}

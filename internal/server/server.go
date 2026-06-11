@@ -93,9 +93,10 @@ type SearchPage struct {
 // ErrorPage contains template data for error pages
 type ErrorPage struct {
 	BasePage
-	Code    int
-	Heading string
-	Message string
+	Code     int
+	Heading  string
+	Message  string
+	TenorURL string
 }
 
 // ProfilePageData contains template data for the user profile page
@@ -246,7 +247,7 @@ func (s *Server) handleCatchAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.handleError(w, http.StatusNotFound)
+	s.handleError(w, r, http.StatusNotFound)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +297,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		gifPage, err = scraper.GetGif(path)
 		if err != nil {
 			slog.Error("failed to scrape GIF page", "error", err)
-			s.handleError(w, scrapeStatusCode(err))
+			s.handleError(w, r, scrapeStatusCode(err))
 			return
 		}
 
@@ -382,7 +383,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			results, scrapeErr := scraper.GetSearch(path)
 			if scrapeErr != nil {
 				slog.Error("HTML scraping fallback also failed", "error", scrapeErr)
-				s.handleError(w, scrapeStatusCode(scrapeErr))
+				s.handleError(w, r, scrapeStatusCode(scrapeErr))
 				return
 			}
 			w.Header().Set("Mezzo-Cache", "BYPASS")
@@ -507,7 +508,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		profilePage, err = scraper.GetProfile(path)
 		if err != nil {
 			slog.Error("failed to scrape profile page", "error", err)
-			s.handleError(w, scrapeStatusCode(err))
+			s.handleError(w, r, scrapeStatusCode(err))
 			return
 		}
 
@@ -547,7 +548,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	targetURL := r.URL.Query().Get("url")
 	if targetURL == "" {
-		s.handleError(w, http.StatusBadRequest)
+		s.handleError(w, r, http.StatusBadRequest)
 		return
 	}
 
@@ -555,14 +556,14 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(targetURL, "https://media.tenor.com/") &&
 		!strings.HasPrefix(targetURL, "https://media1.tenor.com/") &&
 		!strings.HasPrefix(targetURL, "https://c.tenor.com/") {
-		s.handleError(w, http.StatusBadRequest)
+		s.handleError(w, r, http.StatusBadRequest)
 		return
 	}
 
 	resp, err := client.Default.Get(targetURL)
 	if err != nil {
 		slog.Error("failed to fetch proxy URL", "error", err)
-		s.handleError(w, http.StatusBadGateway)
+		s.handleError(w, r, http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
@@ -583,7 +584,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleError(w http.ResponseWriter, code int) {
+func (s *Server) handleError(w http.ResponseWriter, r *http.Request, code int) {
 	w.WriteHeader(code)
 	details := errorDetails(code)
 	data := ErrorPage{
@@ -593,11 +594,61 @@ func (s *Server) handleError(w http.ResponseWriter, code int) {
 			Version:    s.version,
 			Host:       "",
 		},
-		Code:    code,
-		Heading: details.heading,
-		Message: details.message,
+		Code:     code,
+		Heading:  details.heading,
+		Message:  details.message,
+		TenorURL: tenorURLForRequest(r),
 	}
 	s.render(w, "error.html", data)
+}
+
+func tenorURLForRequest(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return ""
+	}
+
+	requestPath := r.URL.Path
+	if requestPath == "" || requestPath == "/" ||
+		requestPath == "/proxy.gif" ||
+		requestPath == "/static" ||
+		strings.HasPrefix(requestPath, "/static/") {
+		return ""
+	}
+
+	rawQuery := r.URL.RawQuery
+	if isMezzoTenorRoute(requestPath) {
+		rawQuery = ""
+	}
+
+	u := url.URL{
+		Scheme:   "https",
+		Host:     "tenor.com",
+		Path:     requestPath,
+		RawQuery: rawQuery,
+	}
+	return u.String()
+}
+
+func isMezzoTenorRoute(requestPath string) bool {
+	parts := strings.Split(strings.Trim(requestPath, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return false
+	}
+
+	actionIndex := 0
+	if len(parts[0]) == 5 && parts[0][2] == '-' {
+		actionIndex = 1
+	}
+	if actionIndex >= len(parts) {
+		return false
+	}
+
+	switch parts[actionIndex] {
+	case "view", "search", "users", "official":
+		return true
+	default:
+		return false
+	}
 }
 
 type errorPageDetails struct {
