@@ -23,13 +23,14 @@
 				</div>
 			</div>
 
+			{{if .Description}}
+			<div class="gif-description">
+				<span class="label">Description</span>
+				<p>{{.Description}}</p>
+			</div>
+			{{end}}
+
 			<div class="gif-details-grid">
-				{{if .Description}}
-				<div class="detail-item">
-					<span class="label">Description</span>
-					<span class="value">{{.Description}}</span>
-				</div>
-				{{end}}
 				{{if .FileSize}}
 				<div class="detail-item">
 					<span class="label">File Size</span>

@@ -288,10 +288,6 @@ a {
 		padding: 0 0.75rem 1.5rem;
 	}
 
-	.profile-banner img {
-		height: 120px;
-	}
-
 	.profile-info {
 		padding: 1rem;
 	}
@@ -376,13 +372,24 @@ a {
 	color: var(--muted);
 }
 
+.gif-description {
+	border-top: 1px solid var(--border);
+	padding-top: 1.25rem;
+	margin-bottom: 1.25rem;
+}
+
+.gif-description p {
+	margin: 0.3rem 0 0;
+	color: var(--main);
+	font-size: 0.95rem;
+	line-height: 1.55;
+}
+
 .gif-details-grid {
 	display: grid;
-	grid-template-columns: repeat(2, 1fr);
-	gap: 1rem;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 0.75rem 1rem;
 	margin-bottom: 1.5rem;
-	border-top: 1px solid var(--border);
-	padding-top: 1.5rem;
 }
 
 .detail-item {
@@ -391,10 +398,11 @@ a {
 	gap: 0.25rem;
 }
 
+.gif-description .label,
 .detail-item .label {
 	font-size: 0.75rem;
 	text-transform: uppercase;
-	letter-spacing: 1px;
+	letter-spacing: 0.05em;
 	color: var(--muted);
 	font-weight: 600;
 }
@@ -402,6 +410,12 @@ a {
 .detail-item .value {
 	font-size: 0.95rem;
 	color: var(--main);
+}
+
+@media (max-width: 600px) {
+	.gif-details-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
 }
 
 .metadata .tags {
@@ -510,7 +524,7 @@ a {
 
 .profile-banner img {
 	width: 100%;
-	height: 180px;
+	aspect-ratio: 1110 / 400;
 	object-fit: cover;
 	display: block;
 }
