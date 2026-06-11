@@ -126,8 +126,13 @@ func TestParseStoreCache(t *testing.T) {
 							"icon": "social"
 						},
 						{
+							"url": "https://www.tiktok.com/@mezzo",
+							"tooltip": "Other",
+							"icon": "other"
+						},
+						{
 							"url": "https://www.generic.example/mezzo",
-							"tooltip": "",
+							"tooltip": "Other",
 							"icon": "other"
 						},
 						{
@@ -205,17 +210,20 @@ func TestParseStoreCache(t *testing.T) {
 		t.Fatalf("BannerURL = %q, want largest banner", profile.BannerURL)
 	}
 
-	if len(profile.SocialLinks) != 3 {
-		t.Fatalf("len(SocialLinks) = %d, want 3", len(profile.SocialLinks))
+	if len(profile.SocialLinks) != 4 {
+		t.Fatalf("len(SocialLinks) = %d, want 4", len(profile.SocialLinks))
 	}
 	if profile.SocialLinks[0].Tooltip != "Website" {
 		t.Fatalf("first social tooltip = %q, want Website", profile.SocialLinks[0].Tooltip)
 	}
-	if profile.SocialLinks[1].Tooltip != "social" {
+	if profile.SocialLinks[1].Tooltip != "Social" {
 		t.Fatalf("second social tooltip = %q, want icon fallback", profile.SocialLinks[1].Tooltip)
 	}
-	if profile.SocialLinks[2].Tooltip != "generic.example" {
-		t.Fatalf("third social tooltip = %q, want hostname fallback", profile.SocialLinks[2].Tooltip)
+	if profile.SocialLinks[2].Tooltip != "TikTok" {
+		t.Fatalf("third social tooltip = %q, want host label fallback", profile.SocialLinks[2].Tooltip)
+	}
+	if profile.SocialLinks[3].Tooltip != "generic.example" {
+		t.Fatalf("fourth social tooltip = %q, want hostname fallback", profile.SocialLinks[3].Tooltip)
 	}
 	if profile.CTA == nil {
 		t.Fatal("CTA = nil, want parsed CTA")

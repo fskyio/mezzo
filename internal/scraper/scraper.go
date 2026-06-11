@@ -561,26 +561,65 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 
 func profileLinkLabel(rawURL, tooltip, icon string) string {
 	if label := strings.TrimSpace(tooltip); label != "" {
-		return label
+		if !isGenericProfileLinkLabel(label) {
+			return label
+		}
 	}
 
 	if label := strings.TrimSpace(icon); label != "" {
-		switch strings.ToLower(label) {
-		case "other", "link":
+		if isGenericProfileLinkLabel(label) {
 			// These are Tenor's generic icon buckets, not useful human labels.
-		default:
-			return strings.ReplaceAll(label, "_", " ")
+		} else {
+			return profileIconLabel(label)
 		}
 	}
 
 	if u, err := url.Parse(rawURL); err == nil {
 		host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 		if host != "" {
+			if label := profileLinkHostLabel(host); label != "" {
+				return label
+			}
 			return host
 		}
 	}
 
 	return "Link"
+}
+
+func profileIconLabel(label string) string {
+	words := strings.Fields(strings.ReplaceAll(label, "_", " "))
+	for i, word := range words {
+		if word == "" {
+			continue
+		}
+		words[i] = strings.ToUpper(word[:1]) + word[1:]
+	}
+	return strings.Join(words, " ")
+}
+
+func isGenericProfileLinkLabel(label string) bool {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "other", "link":
+		return true
+	default:
+		return false
+	}
+}
+
+func profileLinkHostLabel(host string) string {
+	switch {
+	case host == "tiktok.com" || strings.HasSuffix(host, ".tiktok.com"):
+		return "TikTok"
+	case host == "youtube.com" || strings.HasSuffix(host, ".youtube.com") || host == "youtu.be":
+		return "Youtube"
+	case host == "instagram.com" || strings.HasSuffix(host, ".instagram.com"):
+		return "Instagram"
+	case host == "twitter.com" || strings.HasSuffix(host, ".twitter.com") || host == "x.com" || strings.HasSuffix(host, ".x.com"):
+		return "Twitter"
+	default:
+		return ""
+	}
 }
 
 // extractURLFromStyle extracts a URL from a CSS background-image style string
