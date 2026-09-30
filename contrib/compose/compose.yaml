@@ -1,6 +1,6 @@
 services:
   mezzo:
-    image: foundry.fsky.io/fsky/mezzo:latest
+    image: gitfield.org/fsky/mezzo:latest
     restart: always
     container_name: "mezzo"
     ports:

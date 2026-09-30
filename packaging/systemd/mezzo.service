@@ -1,6 +1,6 @@
 [Unit]
 Description=Mezzo
-Documentation=https://foundry.fsky.io/fsky/mezzo
+Documentation=https://gitfield.org/fsky/mezzo
 After=network-online.target
 Wants=network-online.target
 

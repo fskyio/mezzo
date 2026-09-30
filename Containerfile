@@ -31,7 +31,7 @@ LABEL org.opencontainers.image.title="Mezzo" \
       org.opencontainers.image.description="A private and lightweight GIF viewer for Tenor" \
       org.opencontainers.image.authors="FSKY" \
       org.opencontainers.image.url="https://mezzo.fsky.io/" \
-      org.opencontainers.image.source="https://foundry.fsky.io/fsky/mezzo" \
+      org.opencontainers.image.source="https://gitfield.org/fsky/mezzo" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 CMD ["mezzo"]

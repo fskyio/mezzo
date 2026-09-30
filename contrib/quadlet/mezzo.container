@@ -10,7 +10,7 @@ DropCapability=ALL
 #Environment=MEZZO_CACHE_SEARCH_MAX=500
 #Environment=MEZZO_CACHE_PROFILE_TTL=30m
 #Environment=MEZZO_CACHE_PROFILE_MAX=200
-Image=foundry.fsky.io/fsky/mezzo:latest
+Image=gitfield.org/fsky/mezzo:latest
 NoNewPrivileges=true
 PublishPort=8006:8006
 ReadOnly=true
