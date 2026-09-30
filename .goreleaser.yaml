@@ -94,7 +94,7 @@ nfpms:
 
 kos:
   - repositories:
-      - foundry.fsky.io/fsky/mezzo
+      - gitfield.org/fsky/mezzo
     tags:
       - '{{.Version}}'
       - latest
@@ -110,15 +110,15 @@ kos:
       org.opencontainers.image.description: A private and lightweight GIF viewer for Tenor
       org.opencontainers.image.licenses: AGPL-3.0-or-later
       org.opencontainers.image.revision: "{{.FullCommit}}"
-      org.opencontainers.image.source: https://foundry.fsky.io/fsky/mezzo
+      org.opencontainers.image.source: https://gitfield.org/fsky/mezzo
       org.opencontainers.image.title: Mezzo
       org.opencontainers.image.url: https://mezzo.fsky.io/
       org.opencontainers.image.vendor: FSKY
       org.opencontainers.image.version: "{{.Version}}"
 
 gitea_urls:
-  api: https://foundry.fsky.io/api/v1
-  download: https://foundry.fsky.io
+  api: https://gitfield.org/api/v1
+  download: https://gitfield.org
 
 release:
   gitea:

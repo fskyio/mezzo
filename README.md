@@ -16,7 +16,7 @@ Mezzo is an open-source, privacy-focused front-end for Tenor that allows you to 
 </details>
 
 # Instances
-For public instances of Mezzo, see [mezzo-instances](https://foundry.fsky.io/fsky/mezzo-instances).
+For public instances of Mezzo, see [mezzo-instances](https://gitfield.org/fsky/mezzo-instances).
 
 # Run your own instance
 
@@ -26,13 +26,13 @@ We have pre-built images you can run.
 To run the latest stable version of Mezzo (recommended):
 
 ```bash
-docker run -p8006:8006 foundry.fsky.io/fsky/mezzo:latest
+docker run -p8006:8006 gitfield.org/fsky/mezzo:latest
 ```
 
 To run the canary (unstable) version of Mezzo built from the latest Git commit:
 
 ```bash
-docker run -p8006:8006 foundry.fsky.io/fsky/mezzo:canary
+docker run -p8006:8006 gitfield.org/fsky/mezzo:canary
 ```
 
 If you are using Podman, the process is the same. Just replace `docker` with `podman` in the command.
@@ -53,7 +53,7 @@ systemctl --user start mezzo.service
 ```
 
 ## From a binary
-Binaries are provided for Linux, Windows, macOS, FreeBSD, OpenBSD, NetBSD, and Illumos for amd64, arm64, and i386. You can download them from the [releases page](https://foundry.fsky.io/fsky/mezzo/releases).
+Binaries are provided for Linux, Windows, macOS, FreeBSD, OpenBSD, NetBSD, and Illumos for amd64, arm64, and i386. You can download them from the [releases page](https://gitfield.org/fsky/mezzo/releases).
 
 Once downloaded, run the binary directly. On Unix-like systems you may need to mark it as executable first:
 
