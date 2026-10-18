@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -363,7 +364,7 @@ func stubTenor(t *testing.T, handler func(u *url.URL) (int, string)) {
 	t.Cleanup(func() { client.Default.Transport = orig })
 }
 
-func getExplore(t *testing.T, target string) (int, string) {
+func getPage(t *testing.T, target string) (int, string) {
 	t.Helper()
 	s, err := New(assets.Assets, "test", &config.Config{CacheDisabled: true})
 	if err != nil {
@@ -399,7 +400,7 @@ func TestExplorePagination(t *testing.T) {
 	})
 
 	t.Run("first page", func(t *testing.T) {
-		code, body := getExplore(t, "/explore")
+		code, body := getPage(t, "/explore")
 		if code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", code)
 		}
@@ -419,7 +420,7 @@ func TestExplorePagination(t *testing.T) {
 
 	t.Run("later page", func(t *testing.T) {
 		before := categoryCalls
-		code, body := getExplore(t, "/explore?pos=c2")
+		code, body := getPage(t, "/explore?pos=c2")
 		if code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", code)
 		}
@@ -438,7 +439,7 @@ func TestExplorePagination(t *testing.T) {
 	})
 
 	t.Run("locale prefix", func(t *testing.T) {
-		code, body := getExplore(t, "/en-us/explore")
+		code, body := getPage(t, "/en-us/explore")
 		if code != http.StatusOK || !strings.Contains(body, `href="/en-us/explore?pos=c2"`) {
 			t.Fatalf("status = %d, want 200 with locale-prefixed pagination", code)
 		}
@@ -453,7 +454,7 @@ func TestExploreWithoutTrending(t *testing.T) {
 		return http.StatusInternalServerError, ""
 	})
 
-	code, body := getExplore(t, "/explore")
+	code, body := getPage(t, "/explore")
 	if code != http.StatusOK || !strings.Contains(body, `href="/view/cat-gif-1"`) {
 		t.Fatalf("status = %d, want featured GIFs rendered without trending searches", code)
 	}
@@ -471,13 +472,254 @@ func TestExploreFallsBackToHomepage(t *testing.T) {
 		return http.StatusForbidden, ""
 	})
 
-	code, body := getExplore(t, "/explore")
+	code, body := getPage(t, "/explore")
 	if code != http.StatusOK || !strings.Contains(body, `href="/view/home-gif-3"`) {
 		t.Fatalf("status = %d, want homepage GIFs when the API fails", code)
 	}
 
 	// The fallback has no cursor to continue from
-	if code, _ := getExplore(t, "/explore?pos=c2"); code != http.StatusBadGateway {
+	if code, _ := getPage(t, "/explore?pos=c2"); code != http.StatusBadGateway {
+		t.Fatalf("later page status = %d, want 502 when the API fails", code)
+	}
+}
+
+func TestProfileRoute(t *testing.T) {
+	tests := []struct {
+		path        string
+		wantProfile string
+		wantSection scraper.ProfileKind
+		wantOK      bool
+	}{
+		{"/users/mezzo", "/users/mezzo", "", true},
+		{"/official/mezzo", "/official/mezzo", "", true},
+		{"/users/mezzo/stickers", "/users/mezzo", scraper.ProfileStickers, true},
+		{"/official/mezzo/memes", "/official/mezzo", scraper.ProfileMemes, true},
+		{"/en-us/users/mezzo", "/en-us/users/mezzo", "", true},
+		{"/en-us/official/mezzo/stickers", "/en-us/official/mezzo", scraper.ProfileStickers, true},
+		// Tenor has no page for GIFs alone, and nothing deeper
+		{"/users/mezzo/gifs", "", "", false},
+		{"/users/mezzo/other", "", "", false},
+		{"/users/mezzo/stickers/more", "", "", false},
+		{"/en-us/users", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			profile, section, ok := profileRoute(tt.path)
+			if profile != tt.wantProfile || section != tt.wantSection || ok != tt.wantOK {
+				t.Fatalf("profileRoute(%q) = (%q, %q, %v), want (%q, %q, %v)",
+					tt.path, profile, section, ok, tt.wantProfile, tt.wantSection, tt.wantOK)
+			}
+		})
+	}
+}
+
+// profileUpload returns one result of a store-cache upload set.
+func profileUpload(slug, image string) string {
+	return `{"itemurl":"https://tenor.com/view/` + slug + `","content_description":"` + slug + `",` +
+		`"media_formats":{"tinygif":{"url":"https://media.tenor.com/` + image + `","dims":[220,124]}}}`
+}
+
+// profileHTML returns a Tenor profile page whose store-cache holds the given
+// result lists and cursors for the user "Mezzo".
+func profileHTML(gifs, stickers, memes []string, gifsNext, stickersNext string) string {
+	set := func(results []string, next string) string {
+		return `{"next":"` + next + `","results":[` + strings.Join(results, ",") + `]}`
+	}
+	return `<html><body><script id="store-cache">{` +
+		`"profiles":{"p":{"user":{"username":"Mezzo","partnername":"Mezzo","usertype":"user"}}},` +
+		`"gifs":{"searchByUsername":{"mezzo-gifs-profile-public":` + set(gifs, gifsNext) + `}},` +
+		`"stickers":{"searchByUsername":{"mezzo-stickers-profile-public":` + set(stickers, stickersNext) + `}},` +
+		`"memes":{"searchByUsername":{"mezzo-memes-profile-public":` + set(memes, "") + `}}` +
+		`}</script></body></html>`
+}
+
+func TestProfilePages(t *testing.T) {
+	var scraped []string // Tenor pages fetched
+	var apiCalls []url.Values
+	stubTenor(t, func(u *url.URL) (int, string) {
+		switch {
+		case u.Host == "tenor.com":
+			scraped = append(scraped, u.Path)
+			return http.StatusOK, profileHTML(
+				[]string{profileUpload("gif-1", "g1.gif")},
+				[]string{profileUpload("sticker-2", "s2.gif"), profileUpload("sticker-3", "s3.gif")},
+				[]string{profileUpload("meme-4", "m4.gif")},
+				"gif-next", "sticker-next")
+		case u.Path == "/v2/search":
+			q := u.Query()
+			apiCalls = append(apiCalls, q)
+			switch q.Get("pos") {
+			case "gif-next":
+				return http.StatusOK, `{"results":[` + profileUpload("gif-5", "g5.gif") + `],"next":""}`
+			case "sticker-next":
+				return http.StatusOK, `{"results":[` + profileUpload("sticker-6", "s6.gif") + `],"next":""}`
+			}
+		}
+		return http.StatusNotFound, ""
+	})
+
+	// reset forgets the requests of earlier subtests
+	reset := func() { scraped, apiCalls = nil, nil }
+
+	t.Run("profile page", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/users/mezzo")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		for _, want := range []string{
+			`<h2>Memes</h2>`, `<a href="/users/mezzo/memes">See all</a>`, `href="/view/meme-4"`,
+			`<h2>Stickers</h2>`, `<a href="/users/mezzo/stickers">See all</a>`, `href="/view/sticker-2"`, `href="/view/sticker-3"`,
+			`<h2>GIFs</h2>`, `href="/view/gif-1"`,
+			`href="/users/mezzo?pos=gif-next"`, // next page of GIFs, not of stickers
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("profile page is missing %s", want)
+			}
+		}
+		if strings.Contains(body, "Previous page") || strings.Contains(body, "sticker-next") {
+			t.Fatal("first page has a Previous link or links to the sticker cursor")
+		}
+		if len(apiCalls) != 0 {
+			t.Fatalf("first page called the API: %v", apiCalls)
+		}
+	})
+
+	t.Run("later GIF page", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/users/mezzo?pos=gif-next")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		if !strings.Contains(body, `href="/view/gif-5"`) || !strings.Contains(body, `href="/users/mezzo"`) || !strings.Contains(body, "Previous page") {
+			t.Fatal("later page is missing its GIF or the link back to the first page")
+		}
+		if strings.Contains(body, "Next page") {
+			t.Fatal("last page has a Next link")
+		}
+		if strings.Contains(body, "See all") || strings.Contains(body, `href="/view/sticker-2"`) || strings.Contains(body, `href="/view/gif-1"`) {
+			t.Fatal("later page repeats the first page's rows and GIFs")
+		}
+		if len(apiCalls) != 1 || apiCalls[0].Get("q") != "@Mezzo" || apiCalls[0].Has("searchfilter") {
+			t.Fatalf("API calls = %v, want one unfiltered search for @Mezzo", apiCalls)
+		}
+	})
+
+	t.Run("sticker page", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/users/mezzo/stickers")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		for _, want := range []string{
+			`<h2>Stickers</h2>`, `href="/view/sticker-2"`, `href="/view/sticker-3"`,
+			`<a href="/users/mezzo">Back to profile</a>`,
+			`href="/users/mezzo/stickers?pos=sticker-next"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("sticker page is missing %s", want)
+			}
+		}
+		if strings.Contains(body, `href="/view/gif-1"`) || strings.Contains(body, `href="/view/meme-4"`) {
+			t.Fatal("sticker page lists GIFs or memes")
+		}
+		if !slices.Equal(scraped, []string{"/users/mezzo"}) {
+			t.Fatalf("fetched %v from Tenor, want only the profile page", scraped)
+		}
+	})
+
+	t.Run("later sticker page", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/users/mezzo/stickers?pos=sticker-next")
+		if code != http.StatusOK || !strings.Contains(body, `href="/view/sticker-6"`) {
+			t.Fatalf("status = %d, want 200 with the second page of stickers", code)
+		}
+		if !strings.Contains(body, `href="/users/mezzo/stickers"`) {
+			t.Fatal("later sticker page does not link back to the first one")
+		}
+		if len(apiCalls) != 1 || apiCalls[0].Get("searchfilter") != "sticker" {
+			t.Fatalf("API calls = %v, want one search filtered to stickers", apiCalls)
+		}
+	})
+
+	t.Run("locale prefix", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/en-us/official/mezzo/memes")
+		if code != http.StatusOK || !strings.Contains(body, `href="/view/meme-4"`) {
+			t.Fatalf("status = %d, want 200 with the memes", code)
+		}
+		if !strings.Contains(body, `<a href="/en-us/official/mezzo">Back to profile</a>`) {
+			t.Fatal("meme page does not link back to the locale-prefixed profile")
+		}
+		if !slices.Equal(scraped, []string{"/en-us/official/mezzo"}) {
+			t.Fatalf("fetched %v from Tenor, want the locale-prefixed profile page", scraped)
+		}
+
+		_, body = getPage(t, "/en-us/users/mezzo")
+		if !strings.Contains(body, `<a href="/en-us/users/mezzo/stickers">See all</a>`) {
+			t.Fatal("profile page does not link to the locale-prefixed sticker page")
+		}
+	})
+
+	t.Run("unknown section", func(t *testing.T) {
+		reset()
+		for _, target := range []string{"/users/mezzo/gifs", "/users/mezzo/other", "/en-us/official/mezzo/other"} {
+			if code, _ := getPage(t, target); code != http.StatusNotFound {
+				t.Fatalf("GET %s status = %d, want 404", target, code)
+			}
+		}
+		if len(scraped) != 0 {
+			t.Fatalf("fetched %v from Tenor for unknown sections", scraped)
+		}
+	})
+}
+
+func TestProfileWithOnlyStickers(t *testing.T) {
+	stubTenor(t, func(u *url.URL) (int, string) {
+		return http.StatusOK, profileHTML(nil, []string{profileUpload("sticker-2", "s2.gif")}, nil, "", "")
+	})
+
+	code, body := getPage(t, "/users/mezzo")
+	if code != http.StatusOK || !strings.Contains(body, `<h2>Stickers</h2>`) {
+		t.Fatalf("status = %d, want 200 with a Stickers row", code)
+	}
+	// Tenor hides sections with nothing in them
+	for _, unwanted := range []string{`<h2>GIFs</h2>`, `<h2>Memes</h2>`, "hasn't uploaded"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("profile page shows %q", unwanted)
+		}
+	}
+}
+
+func TestProfileWithNoUploads(t *testing.T) {
+	stubTenor(t, func(u *url.URL) (int, string) {
+		return http.StatusOK, profileHTML(nil, nil, nil, "", "")
+	})
+
+	_, body := getPage(t, "/users/mezzo")
+	if !strings.Contains(body, "hasn't uploaded any GIFs, stickers or memes.") {
+		t.Fatal("empty profile has no explanation")
+	}
+
+	_, body = getPage(t, "/users/mezzo/memes")
+	if !strings.Contains(body, "hasn't uploaded any memes.") || !strings.Contains(body, `href="/users/mezzo"`) {
+		t.Fatal("empty meme page has no explanation or link back to the profile")
+	}
+}
+
+func TestProfileLaterPageNeedsTheAPI(t *testing.T) {
+	stubTenor(t, func(u *url.URL) (int, string) {
+		if u.Host == "tenor.com" {
+			return http.StatusOK, profileHTML([]string{profileUpload("gif-1", "g1.gif")}, nil, nil, "gif-next", "")
+		}
+		return http.StatusForbidden, ""
+	})
+
+	if code, _ := getPage(t, "/users/mezzo"); code != http.StatusOK {
+		t.Fatalf("first page status = %d, want 200 without the API", code)
+	}
+	if code, _ := getPage(t, "/users/mezzo?pos=gif-next"); code != http.StatusBadGateway {
 		t.Fatalf("later page status = %d, want 502 when the API fails", code)
 	}
 }

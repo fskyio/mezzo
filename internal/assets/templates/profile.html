@@ -35,19 +35,46 @@
 			{{end}}
 		</div>
 
-		{{if .GIFs}}
-		<h2>GIFs</h2>
-		<div class="search-results">
-			{{range .GIFs}}
+		{{range .Rows}}
+		<section class="profile-section">
+			<div class="profile-section-header">
+				<h2>{{.Heading}}</h2>
+				<a href="{{.SeeAll}}">See all</a>
+			</div>
+			<div class="profile-row" role="region" aria-label="{{.Heading}}">
+				{{range .Results}}
+				<a href="{{.URL}}">
+					<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}">
+				</a>
+				{{end}}
+			</div>
+		</section>
+		{{end}}
+
+		{{if .Results}}
+		<div class="profile-section-header">
+			<h2>{{.Heading}}</h2>
+			{{if .BackURL}}<a href="{{.BackURL}}">Back to profile</a>{{end}}
+		</div>
+		<div class="search-results" role="region" aria-label="{{.Heading}}">
+			{{range .Results}}
 			<a href="{{.URL}}">
 				<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
 			</a>
 			{{end}}
 		</div>
-		{{else}}
+		{{else if and (not .Rows) (not .PrevURL)}}
 		<div class="profile-empty">
-			<p>{{.DisplayName}} hasn't uploaded any GIFs.</p>
+			<p>{{.DisplayName}} hasn't uploaded any {{.Noun}}.</p>
+			{{if .BackURL}}<p><a href="{{.BackURL}}">Back to profile</a></p>{{end}}
 		</div>
+		{{end}}
+
+		{{if or .PrevURL .NextURL}}
+		<nav class="pagination" aria-label="{{.Heading}} pagination">
+			{{if .PrevURL}}<a class="button secondary" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
+			{{if .NextURL}}<a class="button primary" href="{{.NextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
+		</nav>
 		{{end}}
 	</div>
 {{end}}

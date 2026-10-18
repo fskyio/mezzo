@@ -124,7 +124,19 @@ type ErrorPage struct {
 	TenorURL string
 }
 
-// ProfilePageData contains template data for the user profile page
+// profileRowSize is the number of uploads in the Memes and Stickers rows of
+// a profile page; "See all" links to the rest.
+const profileRowSize = 8
+
+// ProfileRow is a short row of one kind of upload on a profile page
+type ProfileRow struct {
+	Heading string
+	SeeAll  string // path of the page that lists every upload of this kind
+	Results []scraper.SearchResult
+}
+
+// ProfilePageData contains template data for the user profile page and for
+// the pages that list all of a profile's stickers or memes
 type ProfilePageData struct {
 	BasePage
 	Username    string
@@ -135,7 +147,19 @@ type ProfilePageData struct {
 	UserType    string
 	SocialLinks []scraper.SocialLink
 	CTA         *scraper.ProfileCTA
-	GIFs        []scraper.SearchResult
+	// Rows are the Memes and Stickers previews, only on the first page of the
+	// profile itself
+	Rows []ProfileRow
+	// Heading and Noun name what Results holds: "GIFs" and "GIFs, stickers or
+	// memes" on the profile page itself, "Stickers" and "stickers" on its
+	// sticker page
+	Heading string
+	Noun    string
+	// BackURL is the profile page, set on the sticker and meme pages
+	BackURL string
+	Results []scraper.SearchResult
+	NextURL string
+	PrevURL string
 }
 
 // New creates a new Server instance
@@ -252,6 +276,8 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /explore", s.handleExplore)
 	s.router.HandleFunc("GET /users/{username}", s.handleProfile)
 	s.router.HandleFunc("GET /official/{username}", s.handleProfile)
+	s.router.HandleFunc("GET /users/{username}/{kind}", s.handleProfile)
+	s.router.HandleFunc("GET /official/{username}/{kind}", s.handleProfile)
 	s.router.HandleFunc("GET "+scraper.MediaPrefix+"{host}/{path...}", s.handleMedia(kindMedia))
 	s.router.HandleFunc("GET "+scraper.AvatarPrefix+"{host}/{path...}", s.handleMedia(kindAvatar))
 
@@ -697,20 +723,28 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
+	profilePath, section, ok := profileRoute(path)
+	if !ok {
+		s.handleError(w, r, http.StatusNotFound)
+		return
+	}
+	pos := r.URL.Query().Get("pos")
+	prev := r.URL.Query().Get("prev")
+
 	cacheStatus := "MISS"
 
 	var profilePage *scraper.ProfilePage
 	var err error
 
 	if s.profileCache != nil {
-		if cached, ok := s.profileCache.Get(path); ok {
+		if cached, ok := s.profileCache.Get(profilePath); ok {
 			profilePage = cached
 			cacheStatus = "HIT"
 		}
 	}
 
 	if profilePage == nil {
-		profilePage, err = scraper.GetProfile(path)
+		profilePage, err = scraper.GetProfile(profilePath)
 		if err != nil {
 			slog.Error("failed to scrape profile page", "error", err)
 			s.handleError(w, r, scrapeStatusCode(err))
@@ -718,7 +752,26 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if s.profileCache != nil {
-			s.profileCache.Set(path, profilePage)
+			s.profileCache.Set(profilePath, profilePage)
+		}
+	}
+
+	// The profile page lists GIFs; the sticker and meme pages list their own
+	kind := section
+	if kind == "" {
+		kind = scraper.ProfileGIFs
+	}
+	uploads := profilePage.Uploads(kind)
+	if pos != "" {
+		more, hit, err := s.profileUploads(profilePage.Username, kind, pos)
+		if err != nil {
+			slog.Error("tenor API failed for profile uploads", "error", err)
+			s.handleError(w, r, http.StatusBadGateway)
+			return
+		}
+		uploads = *more
+		if !hit {
+			cacheStatus = "MISS"
 		}
 	}
 
@@ -729,9 +782,16 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		displayName = profilePage.Username
 	}
 
+	heading, noun := profileKindLabels(section)
+	title := displayName
+	if section != "" {
+		title += " " + heading
+	}
+	prevURL, nextURL := pageLinks(path, pos, prev, uploads.Next)
+
 	data := ProfilePageData{
 		BasePage: BasePage{
-			Title:      displayName,
+			Title:      title,
 			PatchesURL: s.patchesURL,
 			Version:    s.version,
 			Host:       r.Host,
@@ -745,10 +805,93 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		UserType:    profilePage.UserType,
 		SocialLinks: profilePage.SocialLinks,
 		CTA:         profilePage.CTA,
-		GIFs:        profilePage.GIFs,
+		Heading:     heading,
+		Noun:        noun,
+		Results:     uploads.Results,
+		NextURL:     nextURL,
+		PrevURL:     prevURL,
+	}
+
+	if section != "" {
+		data.BackURL = profilePath
+	} else if pos == "" {
+		for _, rowKind := range []scraper.ProfileKind{scraper.ProfileMemes, scraper.ProfileStickers} {
+			results := profilePage.Uploads(rowKind).Results
+			if len(results) == 0 {
+				continue
+			}
+			rowHeading, _ := profileKindLabels(rowKind)
+			data.Rows = append(data.Rows, ProfileRow{
+				Heading: rowHeading,
+				SeeAll:  profilePath + "/" + string(rowKind),
+				Results: results[:min(len(results), profileRowSize)],
+			})
+		}
 	}
 
 	s.render(w, "profile.html", data)
+}
+
+// profileUploads returns a page of a user's uploads after the first one,
+// which comes with the profile page. hit reports whether it was cached.
+func (s *Server) profileUploads(username string, kind scraper.ProfileKind, pos string) (resp *scraper.SearchResponse, hit bool, err error) {
+	key := "@" + username + "\x00" + string(kind) + "\x00" + pos
+
+	if s.searchCache != nil {
+		if cached, ok := s.searchCache.Get(key); ok {
+			return cached, true, nil
+		}
+	}
+
+	resp, err = scraper.APIProfile(username, kind, pos)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if s.searchCache != nil {
+		s.searchCache.Set(key, resp)
+	}
+	return resp, false, nil
+}
+
+// profileRoute splits the path of a profile request into the path of the
+// profile page and the kind of upload listed by a "See all" page, which is
+// empty on the profile page itself. ok is false for anything else under
+// /users/ and /official/.
+func profileRoute(path string) (profilePath string, section scraper.ProfileKind, ok bool) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+
+	// Skip the locale prefix, so parts[i] is "users" or "official" and
+	// parts[i+1] the username
+	i := 0
+	if len(parts[0]) == 5 && parts[0][2] == '-' {
+		i = 1
+	}
+
+	switch len(parts) - i {
+	case 2:
+		return path, "", true
+	case 3:
+		switch kind := scraper.ProfileKind(parts[i+2]); kind {
+		case scraper.ProfileStickers, scraper.ProfileMemes:
+			return "/" + strings.Join(parts[:i+2], "/"), kind, true
+		}
+	}
+	return "", "", false
+}
+
+// profileKindLabels returns the heading above a profile's uploads of the
+// given kind and a phrase for them in a sentence. An empty kind is the
+// profile page itself, which lists GIFs and, above them, the other kinds.
+func profileKindLabels(kind scraper.ProfileKind) (heading, noun string) {
+	switch kind {
+	case scraper.ProfileStickers:
+		return "Stickers", "stickers"
+	case scraper.ProfileMemes:
+		return "Memes", "memes"
+	default:
+		return "GIFs", "GIFs, stickers or memes"
+	}
 }
 
 func (s *Server) handleError(w http.ResponseWriter, r *http.Request, code int) {

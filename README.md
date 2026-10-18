@@ -101,8 +101,8 @@ The application can be configured using the following environment variables:
 | `MEZZO_CACHE_DISABLED` | No | `false` | Disable all caching, including the media cache on disk. |
 | `MEZZO_CACHE_GIF_TTL` | No | `1h` | How long to cache GIF page metadata. Accepts Go duration strings (e.g. `30m`, `2h`). |
 | `MEZZO_CACHE_GIF_MAX` | No | `1000` | Maximum number of GIF pages to keep in cache. |
-| `MEZZO_CACHE_SEARCH_TTL` | No | `10m` | How long to cache search results and Explore page results. Accepts Go duration strings. |
-| `MEZZO_CACHE_SEARCH_MAX` | No | `500` | Maximum number of search result pages (and, separately, Explore pages) to keep in cache. |
+| `MEZZO_CACHE_SEARCH_TTL` | No | `10m` | How long to cache search results, Explore page results, and later pages of a profile's GIFs, stickers and memes. Accepts Go duration strings. |
+| `MEZZO_CACHE_SEARCH_MAX` | No | `500` | Maximum number of search result pages (and, separately, Explore pages) to keep in cache. Later profile pages share the search result slots. |
 | `MEZZO_CACHE_PROFILE_TTL` | No | `30m` | How long to cache user profile pages. Accepts Go duration strings. |
 | `MEZZO_CACHE_PROFILE_MAX` | No | `200` | Maximum number of user profiles to keep in cache. |
 | `MEZZO_CACHE_MEDIA_DIR` | No | | Directory for the [media cache on disk](#media-cache-on-disk). The cache is off unless this is set. |

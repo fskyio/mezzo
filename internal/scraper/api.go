@@ -40,6 +40,10 @@ const (
 
 	// SearchLimit is the number of results per page.
 	SearchLimit = 30
+
+	// ProfileLimit is the number of uploads per page on a profile, the same
+	// as Tenor's website requests.
+	ProfileLimit = 50
 )
 
 // apiSearchResponse represents the JSON response from the Tenor v2 search API.
@@ -93,13 +97,25 @@ type apiCategoriesResponse struct {
 func APISearch(query string, pos string) (*SearchResponse, error) {
 	params := url.Values{}
 	params.Set("q", query)
-	return apiList("/search", params, pos)
+	return apiList("/search", params, SearchLimit, pos)
+}
+
+// APIProfile calls the Tenor v2 API for the uploads of one kind (GIFs,
+// stickers or memes) that a user has made public. Tenor's website lists them
+// as a search for "@username". It paginates the same way as APISearch.
+func APIProfile(username string, kind ProfileKind, pos string) (*SearchResponse, error) {
+	params := url.Values{}
+	params.Set("q", "@"+username)
+	if filter := kind.searchFilter(); filter != "" {
+		params.Set("searchfilter", filter)
+	}
+	return apiList("/search", params, ProfileLimit, pos)
 }
 
 // APIFeatured calls the Tenor v2 API for the featured GIFs shown on Tenor's
 // homepage. It paginates the same way as APISearch.
 func APIFeatured(pos string) (*SearchResponse, error) {
-	return apiList("/featured", url.Values{}, pos)
+	return apiList("/featured", url.Values{}, SearchLimit, pos)
 }
 
 // APITrending calls the Tenor v2 API for the trending searches shown on
@@ -125,8 +141,8 @@ func APITrending() ([]Trend, error) {
 
 // apiList calls a paginated Tenor v2 endpoint that returns GIF results
 // ("search" and "featured") and converts them to SearchResults.
-func apiList(endpoint string, params url.Values, pos string) (*SearchResponse, error) {
-	params.Set("limit", fmt.Sprintf("%d", SearchLimit))
+func apiList(endpoint string, params url.Values, limit int, pos string) (*SearchResponse, error) {
+	params.Set("limit", fmt.Sprintf("%d", limit))
 	params.Set("media_filter", "tinygif")
 
 	if pos != "" {

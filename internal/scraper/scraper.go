@@ -398,6 +398,28 @@ type ProfileCTA struct {
 	Label string
 }
 
+// ProfileKind is one of the three kinds of upload on a Tenor profile.
+type ProfileKind string
+
+const (
+	ProfileGIFs     ProfileKind = "gifs"
+	ProfileStickers ProfileKind = "stickers"
+	ProfileMemes    ProfileKind = "memes"
+)
+
+// searchFilter returns the Tenor API searchfilter that selects kind, the same
+// values Tenor's website sends. GIFs are what is left when no filter is set.
+func (k ProfileKind) searchFilter() string {
+	switch k {
+	case ProfileStickers:
+		return "sticker"
+	case ProfileMemes:
+		return "static,-sticker"
+	default:
+		return ""
+	}
+}
+
 // ProfilePage represents scraped data from a Tenor user profile page
 type ProfilePage struct {
 	Username    string
@@ -408,13 +430,31 @@ type ProfilePage struct {
 	UserType    string // "partner" or "user"
 	SocialLinks []SocialLink
 	CTA         *ProfileCTA
-	GIFs        []SearchResult
+	// First page of each kind of upload. Next is the cursor for the second
+	// page, empty when there is none.
+	GIFs     SearchResponse
+	Stickers SearchResponse
+	Memes    SearchResponse
+}
+
+// Uploads returns the first page of the profile's uploads of the given kind.
+func (p *ProfilePage) Uploads(kind ProfileKind) SearchResponse {
+	switch kind {
+	case ProfileStickers:
+		return p.Stickers
+	case ProfileMemes:
+		return p.Memes
+	default:
+		return p.GIFs
+	}
 }
 
 // storeCacheData represents the top-level JSON blob from <script id="store-cache">
 type storeCacheData struct {
 	Profiles map[string]storeCacheProfileWrapper `json:"profiles"`
-	GIFs     storeCacheGIFs                      `json:"gifs"`
+	GIFs     storeCacheProfileUploads            `json:"gifs"`
+	Stickers storeCacheProfileUploads            `json:"stickers"`
+	Memes    storeCacheProfileUploads            `json:"memes"`
 }
 
 type storeCacheProfileWrapper struct {
@@ -443,12 +483,15 @@ type storeCachePartnerCTA struct {
 	Text string `json:"text"`
 }
 
-type storeCacheGIFs struct {
+// storeCacheProfileUploads holds the uploads of one kind (GIFs, stickers or
+// memes), keyed like "<username>-<kind>-profile-public".
+type storeCacheProfileUploads struct {
 	SearchByUsername map[string]storeCacheGIFSet `json:"searchByUsername"`
 }
 
 type storeCacheGIFSet struct {
 	Results []storeCacheGIF `json:"results"`
+	Next    string          `json:"next"`
 }
 
 type storeCacheGIF struct {
@@ -465,14 +508,17 @@ type storeCacheMedia struct {
 	Dims []int  `json:"dims"`
 }
 
-// GetProfile scrapes a Tenor user profile page for user info and GIFs
+// GetProfile scrapes a Tenor user profile page for user info and the first
+// page of GIFs, stickers and memes
 func GetProfile(path string) (*ProfilePage, error) {
-	fullURL := TenorBaseURL + path
-	doc, err := FetchDocument(fullURL)
+	doc, err := FetchDocument(TenorBaseURL + path)
 	if err != nil {
 		return nil, err
 	}
+	return parseProfile(doc, path), nil
+}
 
+func parseProfile(doc *goquery.Document, path string) *ProfilePage {
 	profile := &ProfilePage{}
 
 	// Try to extract structured data from the store-cache JSON blob first
@@ -526,9 +572,11 @@ func GetProfile(path string) (*ProfilePage, error) {
 		}
 	}
 
-	// Fallback: scrape GIFs from the DOM if the JSON blob didn't provide them
-	if len(profile.GIFs) == 0 {
-		doc.Find("figure a").Each(func(i int, s *goquery.Selection) {
+	// Fallback: scrape GIFs from the DOM if the JSON blob provided no uploads
+	// at all. The page lists memes and stickers in their own carousels, so only
+	// the GIF list is read.
+	if len(profile.GIFs.Results)+len(profile.Stickers.Results)+len(profile.Memes.Results) == 0 {
+		doc.Find(".UniversalGifList figure a").Each(func(i int, s *goquery.Selection) {
 			href, hrefExists := s.Attr("href")
 			if !hrefExists {
 				return
@@ -547,7 +595,7 @@ func GetProfile(path string) (*ProfilePage, error) {
 			if strings.HasPrefix(href, "/gif-maker") {
 				return
 			}
-			profile.GIFs = append(profile.GIFs, SearchResult{
+			profile.GIFs.Results = append(profile.GIFs.Results, SearchResult{
 				URL:      href,
 				ImageURL: src,
 				Alt:      alt,
@@ -565,7 +613,7 @@ func GetProfile(path string) (*ProfilePage, error) {
 		}
 	}
 
-	return profile, nil
+	return profile
 }
 
 // parseStoreCache attempts to parse the store-cache JSON and extract profile data
@@ -630,64 +678,72 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 		}
 	}
 
-	// Extract GIFs from the gifs.searchByUsername section
-	username := prof.Username
-	gifKeys := []string{
-		username + "-gifs-profile-public",
-		username + "-GIFs-profile-public",
-	}
-
-	for _, key := range gifKeys {
-		if gifSet, ok := data.GIFs.SearchByUsername[key]; ok {
-			for _, g := range gifSet.Results {
-				imageURL := ""
-				width := 0
-				height := 0
-				// Prefer tinygif for thumbnails
-				if m, ok := g.MediaFormats["tinygif"]; ok && m.URL != "" {
-					imageURL = m.URL
-					if len(m.Dims) >= 2 {
-						width = m.Dims[0]
-						height = m.Dims[1]
-					}
-				} else if m, ok := g.MediaFormats["gif"]; ok && m.URL != "" {
-					imageURL = m.URL
-					if len(m.Dims) >= 2 {
-						width = m.Dims[0]
-						height = m.Dims[1]
-					}
-				}
-
-				viewPath := ""
-				if g.ItemURL != "" {
-					viewPath = strings.TrimPrefix(g.ItemURL, TenorBaseURL)
-				}
-
-				if viewPath == "" || imageURL == "" {
-					continue
-				}
-
-				alt := g.ContentDesc
-				if alt == "" {
-					alt = g.H1Title
-				}
-				if alt == "" {
-					alt = g.Title
-				}
-
-				profile.GIFs = append(profile.GIFs, SearchResult{
-					URL:      viewPath,
-					ImageURL: imageURL,
-					Alt:      alt,
-					Width:    width,
-					Height:   height,
-				})
-			}
-			break
-		}
-	}
+	profile.GIFs = profileUploads(data.GIFs, prof.Username, ProfileGIFs)
+	profile.Stickers = profileUploads(data.Stickers, prof.Username, ProfileStickers)
+	profile.Memes = profileUploads(data.Memes, prof.Username, ProfileMemes)
 
 	return profile, true
+}
+
+// profileUploads converts the uploads of one kind that username has in the
+// store-cache. Tenor keys them by lowercased username, so the match ignores
+// case.
+func profileUploads(uploads storeCacheProfileUploads, username string, kind ProfileKind) SearchResponse {
+	want := username + "-" + string(kind) + "-profile-public"
+
+	var resp SearchResponse
+	for key, set := range uploads.SearchByUsername {
+		if !strings.EqualFold(key, want) {
+			continue
+		}
+		resp.Next = set.Next
+		for _, g := range set.Results {
+			imageURL := ""
+			width := 0
+			height := 0
+			// Prefer tinygif for thumbnails
+			if m, ok := g.MediaFormats["tinygif"]; ok && m.URL != "" {
+				imageURL = m.URL
+				if len(m.Dims) >= 2 {
+					width = m.Dims[0]
+					height = m.Dims[1]
+				}
+			} else if m, ok := g.MediaFormats["gif"]; ok && m.URL != "" {
+				imageURL = m.URL
+				if len(m.Dims) >= 2 {
+					width = m.Dims[0]
+					height = m.Dims[1]
+				}
+			}
+
+			viewPath := ""
+			if g.ItemURL != "" {
+				viewPath = strings.TrimPrefix(g.ItemURL, TenorBaseURL)
+			}
+
+			if viewPath == "" || imageURL == "" {
+				continue
+			}
+
+			alt := g.ContentDesc
+			if alt == "" {
+				alt = g.H1Title
+			}
+			if alt == "" {
+				alt = g.Title
+			}
+
+			resp.Results = append(resp.Results, SearchResult{
+				URL:      viewPath,
+				ImageURL: imageURL,
+				Alt:      alt,
+				Width:    width,
+				Height:   height,
+			})
+		}
+		break
+	}
+	return resp
 }
 
 func profileLinkLabel(rawURL, tooltip, icon string) string {

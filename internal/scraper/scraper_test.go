@@ -23,10 +23,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"mezzo/internal/client"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 func TestMediaPath(t *testing.T) {
@@ -321,10 +324,10 @@ func TestParseStoreCache(t *testing.T) {
 		t.Fatalf("CTA Label = %q, want Watch now", profile.CTA.Label)
 	}
 
-	if len(profile.GIFs) != 2 {
-		t.Fatalf("len(GIFs) = %d, want 2", len(profile.GIFs))
+	if len(profile.GIFs.Results) != 2 {
+		t.Fatalf("len(GIFs) = %d, want 2", len(profile.GIFs.Results))
 	}
-	first := profile.GIFs[0]
+	first := profile.GIFs.Results[0]
 	if first.URL != "/view/waving-cat-1" {
 		t.Fatalf("first GIF URL = %q, want /view/waving-cat-1", first.URL)
 	}
@@ -338,7 +341,7 @@ func TestParseStoreCache(t *testing.T) {
 		t.Fatalf("first GIF dimensions = %dx%d, want 220x123", first.Width, first.Height)
 	}
 
-	second := profile.GIFs[1]
+	second := profile.GIFs.Results[1]
 	if second.ImageURL != "https://media.tenor.com/second-cat.gif" {
 		t.Fatalf("second GIF ImageURL = %q, want gif fallback URL", second.ImageURL)
 	}
@@ -358,6 +361,112 @@ func TestParseStoreCacheRejectsInvalidOrEmptyData(t *testing.T) {
 		if profile, ok := parseStoreCache(jsonText, "/users/mezzo"); ok || profile != nil {
 			t.Fatalf("parseStoreCache(%q) = (%#v, %v), want (nil, false)", jsonText, profile, ok)
 		}
+	}
+}
+
+func TestParseStoreCacheProfileUploads(t *testing.T) {
+	// Tenor keys the uploads by lowercased username, while the profile keeps
+	// the name's own case. Stickers and memes are separate sets with their own
+	// cursors.
+	const blob = `{
+		"profiles": {"p": {"user": {"username": "BenJammins", "usertype": "partner"}}},
+		"gifs": {"searchByUsername": {"benjammins-gifs-profile-public": {
+			"next": "gif-next",
+			"results": [{"itemurl": "https://tenor.com/view/gif-1", "media_formats": {"tinygif": {"url": "https://media.tenor.com/g.gif"}}}]
+		}}},
+		"stickers": {"searchByUsername": {"benjammins-stickers-profile-public": {
+			"next": "sticker-next",
+			"results": [
+				{"itemurl": "https://tenor.com/view/sticker-2", "media_formats": {"tinygif": {"url": "https://media.tenor.com/s1.gif"}}},
+				{"itemurl": "https://tenor.com/view/sticker-3", "media_formats": {"tinygif": {"url": "https://media.tenor.com/s2.gif"}}}
+			]
+		}}},
+		"memes": {"searchByUsername": {"benjammins-memes-profile-public": {
+			"next": "",
+			"results": [{"itemurl": "https://tenor.com/view/meme-4", "media_formats": {"tinygif": {"url": "https://media.tenor.com/m.gif"}}}]
+		}}}
+	}`
+
+	profile, ok := parseStoreCache(blob, "/official/benjammins")
+	if !ok {
+		t.Fatal("parseStoreCache returned ok = false, want true")
+	}
+
+	tests := []struct {
+		kind     ProfileKind
+		wantURLs []string
+		wantNext string
+	}{
+		{ProfileGIFs, []string{"/view/gif-1"}, "gif-next"},
+		{ProfileStickers, []string{"/view/sticker-2", "/view/sticker-3"}, "sticker-next"},
+		{ProfileMemes, []string{"/view/meme-4"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.kind), func(t *testing.T) {
+			got := profile.Uploads(tt.kind)
+			var urls []string
+			for _, r := range got.Results {
+				urls = append(urls, r.URL)
+			}
+			if !slices.Equal(urls, tt.wantURLs) || got.Next != tt.wantNext {
+				t.Fatalf("Uploads(%s) = %v next %q, want %v next %q", tt.kind, urls, got.Next, tt.wantURLs, tt.wantNext)
+			}
+		})
+	}
+}
+
+func TestParseProfileDOMFallbackReadsOnlyGIFs(t *testing.T) {
+	// Without a usable store-cache the page's DOM is all there is. Its
+	// sticker and meme carousels must not leak into the GIF list.
+	const page = `<html><body><div class="ProfilePageHeader"><h1>Mezzo</h1></div>
+		<div class="media-section"><h2>Mezzo Stickers</h2><div class="Carousel">
+			<figure><a href="/view/sticker-1"><img src="https://media.tenor.com/s.gif" alt="sticker"></a></figure>
+		</div></div>
+		<div class="media-section"><h2>Mezzo GIFs</h2><div class="UniversalGifList">
+			<figure><a href="/view/gif-2"><img src="https://media.tenor.com/g.gif" alt="gif" width="10" height="20"></a></figure>
+			<figure><a href="/gif-maker"><img src="https://media.tenor.com/maker.gif"></a></figure>
+		</div></div></body></html>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	profile := parseProfile(doc, "/users/mezzo")
+
+	want := []SearchResult{{URL: "/view/gif-2", ImageURL: "https://media.tenor.com/g.gif", Alt: "gif", Width: 10, Height: 20}}
+	if !slices.Equal(profile.GIFs.Results, want) {
+		t.Fatalf("GIFs = %+v, want %+v", profile.GIFs.Results, want)
+	}
+	if len(profile.Stickers.Results) != 0 || len(profile.Memes.Results) != 0 {
+		t.Fatalf("stickers %+v and memes %+v, want none", profile.Stickers.Results, profile.Memes.Results)
+	}
+}
+
+func TestParseProfileKeepsStickersOutOfEmptyGIFList(t *testing.T) {
+	// A user with only stickers has an empty GIF set. The DOM fallback must
+	// not run just because of that and fill the GIF list with the stickers.
+	const blob = `{
+		"profiles": {"p": {"user": {"username": "Mezzo"}}},
+		"gifs": {"searchByUsername": {"mezzo-gifs-profile-public": {"results": []}}},
+		"stickers": {"searchByUsername": {"mezzo-stickers-profile-public": {
+			"results": [{"itemurl": "https://tenor.com/view/sticker-1", "media_formats": {"tinygif": {"url": "https://media.tenor.com/s.gif"}}}]
+		}}}
+	}`
+	page := `<html><body><script id="store-cache">` + blob + `</script>
+		<div class="UniversalGifList"><figure><a href="/view/sticker-1"><img src="https://media.tenor.com/s.gif"></a></figure></div>
+		</body></html>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	profile := parseProfile(doc, "/users/mezzo")
+
+	if len(profile.Stickers.Results) != 1 {
+		t.Fatalf("Stickers = %+v, want the one sticker", profile.Stickers.Results)
+	}
+	if len(profile.GIFs.Results) != 0 {
+		t.Fatalf("GIFs = %+v, want none", profile.GIFs.Results)
 	}
 }
 
@@ -503,6 +612,39 @@ func TestAPISearchAndFeatured(t *testing.T) {
 			want := SearchResult{URL: "/view/a-gif-1", ImageURL: "https://media.tenor.com/a.gif", Alt: "a", Width: 10, Height: 20}
 			if len(resp.Results) != 1 || resp.Results[0] != want {
 				t.Fatalf("Results = %+v, want [%+v]", resp.Results, want)
+			}
+		})
+	}
+}
+
+func TestAPIProfileSelectsKindWithSearchFilter(t *testing.T) {
+	tests := []struct {
+		kind       ProfileKind
+		wantFilter string // empty: the parameter must be absent
+	}{
+		{ProfileGIFs, ""},
+		{ProfileStickers, "sticker"},
+		{ProfileMemes, "static,-sticker"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.kind), func(t *testing.T) {
+			reqs := stubAPI(t, apiGIFs)
+			resp, err := APIProfile("BenJammins", tt.kind, "p1")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			u := (*reqs)[0]
+			q := u.Query()
+			if u.Path != "/v2/search" || q.Get("q") != "@BenJammins" || q.Get("pos") != "p1" || q.Get("limit") != "50" {
+				t.Fatalf("requested %s, want /v2/search for @BenJammins at pos p1 with limit 50", u)
+			}
+			if q.Get("searchfilter") != tt.wantFilter || q.Has("searchfilter") != (tt.wantFilter != "") {
+				t.Fatalf("requested %s, want searchfilter %q", u.RawQuery, tt.wantFilter)
+			}
+			if resp.Next != "n2" || len(resp.Results) != 1 {
+				t.Fatalf("got next %q and %d results, want n2 and 1", resp.Next, len(resp.Results))
 			}
 		})
 	}
