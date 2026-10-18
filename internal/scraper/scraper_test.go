@@ -29,15 +29,93 @@ import (
 	"mezzo/internal/client"
 )
 
-func TestProxy(t *testing.T) {
-	if got := Proxy(""); got != "" {
-		t.Fatalf("Proxy(empty) = %q, want empty", got)
+func TestMediaPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		src      string
+		media    string
+		avatar   string
+		download string
+	}{
+		{
+			name:     "gif keeps its real file name",
+			src:      "https://media1.tenor.com/m/AAAAC/cat.gif",
+			media:    "/media/media1.tenor.com/m/AAAAC/cat.gif",
+			avatar:   "/avatar/media1.tenor.com/m/AAAAC/cat.gif",
+			download: "/media/media1.tenor.com/m/AAAAC/cat.gif?download=cat-hd",
+		},
+		{
+			name:     "mp4 keeps its extension",
+			src:      "https://c.tenor.com/x/AAAPo/cat.mp4",
+			media:    "/media/c.tenor.com/x/AAAPo/cat.mp4",
+			avatar:   "/avatar/c.tenor.com/x/AAAPo/cat.mp4",
+			download: "/media/c.tenor.com/x/AAAPo/cat.mp4?download=cat-hd",
+		},
+		{
+			name:     "path stays escaped and the query is dropped",
+			src:      "https://media.tenor.com/example%20tiny.gif?x=1&y=2",
+			media:    "/media/media.tenor.com/example%20tiny.gif",
+			avatar:   "/avatar/media.tenor.com/example%20tiny.gif",
+			download: "/media/media.tenor.com/example%20tiny.gif?download=cat-hd",
+		},
+		{name: "empty", src: ""},
+		{name: "other host", src: "https://example.com/cat.gif"},
+		{name: "host that only contains a Tenor host", src: "https://media.tenor.com.evil.example/cat.gif"},
+		{name: "tenor host in the query of another host", src: "https://example.com/cat.gif?u=media.tenor.com"},
+		{name: "plain http", src: "http://media.tenor.com/cat.gif"},
+		{name: "port", src: "https://media.tenor.com:8443/cat.gif"},
+		{name: "no path", src: "https://media.tenor.com"},
+		{name: "root path", src: "https://media.tenor.com/"},
+		{name: "dot dot segment", src: "https://media.tenor.com/a/../b.gif"},
+		{name: "trailing slash", src: "https://media.tenor.com/a/"},
 	}
 
-	got := Proxy("https://media.tenor.com/example tiny.gif?x=1&y=2")
-	want := "/proxy.gif?url=https%3A%2F%2Fmedia.tenor.com%2Fexample+tiny.gif%3Fx%3D1%26y%3D2"
-	if got != want {
-		t.Fatalf("Proxy URL = %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MediaPath(tt.src); got != tt.media {
+				t.Errorf("MediaPath = %q, want %q", got, tt.media)
+			}
+			if got := AvatarPath(tt.src); got != tt.avatar {
+				t.Errorf("AvatarPath = %q, want %q", got, tt.avatar)
+			}
+			if got := MediaDownload(tt.src, "cat-hd"); got != tt.download {
+				t.Errorf("MediaDownload = %q, want %q", got, tt.download)
+			}
+		})
+	}
+}
+
+func TestMediaURL(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		path string
+		want string // empty when rejected
+	}{
+		{"media host", "media.tenor.com", "a/b.gif", "https://media.tenor.com/a/b.gif"},
+		{"media1 host", "media1.tenor.com", "m/AAAAC/cat.gif", "https://media1.tenor.com/m/AAAAC/cat.gif"},
+		{"c host", "c.tenor.com", "a.png", "https://c.tenor.com/a.png"},
+		{"unknown host", "example.com", "a.gif", ""},
+		{"host with port", "media.tenor.com:443", "a.gif", ""},
+		{"user info", "user@media.tenor.com", "a.gif", ""},
+		{"empty host", "", "a.gif", ""},
+		{"empty path", "media.tenor.com", "", ""},
+		{"dot dot", "media.tenor.com", "a/../b.gif", ""},
+		{"leading dot dot", "media.tenor.com", "../b.gif", ""},
+		{"empty segment", "media.tenor.com", "a//b.gif", ""},
+		{"trailing slash", "media.tenor.com", "a/", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := MediaURL(tt.host, tt.path)
+			if ok != (tt.want != "") {
+				t.Fatalf("MediaURL(%q, %q) ok = %v, want %v", tt.host, tt.path, ok, tt.want != "")
+			}
+			if ok && got.String() != tt.want {
+				t.Fatalf("MediaURL(%q, %q) = %q, want %q", tt.host, tt.path, got, tt.want)
+			}
+		})
 	}
 }
 

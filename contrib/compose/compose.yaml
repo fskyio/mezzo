@@ -20,3 +20,15 @@ services:
     # - MEZZO_CACHE_SEARCH_MAX=500
     # - MEZZO_CACHE_PROFILE_TTL=30m
     # - MEZZO_CACHE_PROFILE_MAX=200
+    # - MEZZO_CACHE_MEDIA_DIR=/cache
+    # - MEZZO_CACHE_MEDIA_MAX_MB=512
+    # - MEZZO_CACHE_MEDIA_MAX_FILE_MB=16
+    # - MEZZO_CACHE_MEDIA_TTL=168h
+    # - MEZZO_CACHE_AVATAR_TTL=24h
+    # To keep media on disk, uncomment MEZZO_CACHE_MEDIA_DIR above and the
+    # tmpfs below. It lives in memory and starts empty after a restart, so keep
+    # its size above MEZZO_CACHE_MEDIA_MAX_MB. The image runs as UID 65532. For a
+    # cache that survives restarts, mount a volume at /cache that this user can
+    # write to instead.
+    #tmpfs:
+    #  - /cache:size=512m,uid=65532,gid=65532

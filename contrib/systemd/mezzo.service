@@ -4,6 +4,8 @@ After=network.service
 
 [Service]
 DynamicUser=yes
+CacheDirectory=mezzo
+CacheDirectoryMode=0700
 # Default Values
 #Environment=MEZZO_PORT=8006
 #Environment=MEZZO_PATCHES_URL=
@@ -14,6 +16,13 @@ DynamicUser=yes
 #Environment=MEZZO_CACHE_SEARCH_MAX=500
 #Environment=MEZZO_CACHE_PROFILE_TTL=30m
 #Environment=MEZZO_CACHE_PROFILE_MAX=200
+# Media cache on disk, off unless a directory is set. CacheDirectory= creates
+# /var/cache/mezzo and keeps it writable for the service.
+#Environment=MEZZO_CACHE_MEDIA_DIR=/var/cache/mezzo
+#Environment=MEZZO_CACHE_MEDIA_MAX_MB=512
+#Environment=MEZZO_CACHE_MEDIA_MAX_FILE_MB=16
+#Environment=MEZZO_CACHE_MEDIA_TTL=168h
+#Environment=MEZZO_CACHE_AVATAR_TTL=24h
 ExecStart=/usr/local/bin/mezzo
 
 # Hardening

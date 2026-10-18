@@ -2,9 +2,9 @@
 	<div class="view-page">
 		<div class="view-media">
 			{{if .Media.Video}}
-			<video src="{{proxy .Media.URL}}" aria-label="{{.Title}}" autoplay loop muted playsinline controls></video>
+			<video src="{{media .Media.URL}}" aria-label="{{.Title}}" autoplay loop muted playsinline controls></video>
 			{{else}}
-			<img alt="{{.Title}}" src="{{proxy .Media.URL}}" loading="lazy">
+			<img alt="{{.Title}}" src="{{media .Media.URL}}" loading="lazy">
 			{{end}}
 			{{if or .Formats .Downloads}}
 			<div class="view-controls">
@@ -36,7 +36,7 @@
 
 			<div class="author-section">
 				{{if .AuthorAvatar}}
-				<img class="avatar" src="{{proxy .AuthorAvatar}}" alt="{{.Author}}">
+				<img class="avatar" src="{{avatar .AuthorAvatar}}" alt="{{.Author}}">
 				{{else if .Author}}
 				<div class="avatar avatar-placeholder">{{printf "%.1s" .Author}}</div>
 				{{end}}

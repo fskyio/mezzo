@@ -22,7 +22,6 @@ package server
 import (
 	"errors"
 	"io"
-	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -181,8 +180,13 @@ func TestTenorURLForRequest(t *testing.T) {
 			want: "https://tenor.com/view/",
 		},
 		{
-			name: "proxy request",
-			raw:  "http://mezzo.test/proxy.gif?url=https%3A%2F%2Fexample.com%2Fbad.gif",
+			name: "media request",
+			raw:  "http://mezzo.test/media/media1.tenor.com/m/AAAAC/missing.gif",
+			want: "",
+		},
+		{
+			name: "avatar request",
+			raw:  "http://mezzo.test/avatar/media.tenor.com/missing.png",
 			want: "",
 		},
 		{
@@ -262,9 +266,9 @@ func TestFormatOptions(t *testing.T) {
 
 	got := formatOptions("/en-us/view/cat%20gif-1", formats, "hd")
 	want := []FormatOption{
-		{Label: "SD GIF", Href: "/en-us/view/cat%20gif-1", Src: scraper.Proxy(formats[0].URL)},
-		{Label: "HD GIF", Href: "/en-us/view/cat%20gif-1?format=hd", Src: scraper.Proxy(formats[1].URL), Active: true},
-		{Label: "MP4", Href: "/en-us/view/cat%20gif-1?format=mp4", Src: scraper.Proxy(formats[2].URL), Video: true},
+		{Label: "SD GIF", Href: "/en-us/view/cat%20gif-1", Src: "/media/media1.tenor.com/sd.gif"},
+		{Label: "HD GIF", Href: "/en-us/view/cat%20gif-1?format=hd", Src: "/media/media1.tenor.com/hd.gif", Active: true},
+		{Label: "MP4", Href: "/en-us/view/cat%20gif-1?format=mp4", Src: "/media/media.tenor.com/cat.mp4", Video: true},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d options, want %d", len(got), len(want))
@@ -284,10 +288,10 @@ func TestDownloadOptions(t *testing.T) {
 	}
 
 	got := downloadOptions("/en-us/view/cat%20gif-1", formats)
-	want := []struct{ label, url, download string }{
-		{"SD GIF", formats[0].URL, "cat gif-1-sd"},
-		{"HD GIF", formats[1].URL, "cat gif-1-hd"},
-		{"MP4", formats[2].URL, "cat gif-1"},
+	want := []struct{ label, path, download string }{
+		{"SD GIF", "/media/media1.tenor.com/m/x/AAAAd/cat.gif", "cat gif-1-sd"},
+		{"HD GIF", "/media/media1.tenor.com/m/x/AAAAC/cat.gif", "cat gif-1-hd"},
+		{"MP4", "/media/media.tenor.com/x/AAAPo/cat.mp4", "cat gif-1"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d options, want %d", len(got), len(want))
@@ -297,9 +301,8 @@ func TestDownloadOptions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("option %d href %q: %v", i, got[i].Href, err)
 		}
-		if got[i].Label != w.label || u.Path != "/proxy.gif" ||
-			u.Query().Get("url") != w.url || u.Query().Get("download") != w.download {
-			t.Fatalf("option %d = %+v, want label %q url %q download %q", i, got[i], w.label, w.url, w.download)
+		if got[i].Label != w.label || u.Path != w.path || u.Query().Get("download") != w.download {
+			t.Fatalf("option %d = %+v, want label %q path %q download %q", i, got[i], w.label, w.path, w.download)
 		}
 	}
 }
@@ -307,70 +310,6 @@ func TestDownloadOptions(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-func TestHandleProxyContentDisposition(t *testing.T) {
-	orig := client.Default.Transport
-	client.Default.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"image/gif"}},
-			Body:       io.NopCloser(strings.NewReader("GIF89a")),
-			Request:    r,
-		}, nil
-	})
-	t.Cleanup(func() { client.Default.Transport = orig })
-
-	const media = "https://media1.tenor.com/m/x/AAAAC/cat.gif"
-	tests := []struct {
-		name         string
-		query        string
-		wantType     string
-		wantFilename string
-	}{
-		{"displayed by default", "url=" + url.QueryEscape(media), "inline", "cat.gif"},
-		{"download stem gets the media extension", "url=" + url.QueryEscape(media) + "&download=cat-hd", "attachment", "cat-hd.gif"},
-		{"empty download keeps the media name", "url=" + url.QueryEscape(media) + "&download=", "attachment", "cat.gif"},
-		{"download cannot choose the extension", "url=" + url.QueryEscape(media) + "&download=run.exe", "attachment", "run.exe.gif"},
-		{"download cannot choose a directory", "url=" + url.QueryEscape(media) + "&download=" + url.QueryEscape("../../etc/cat"), "attachment", "cat.gif"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/proxy.gif?"+tt.query, nil)
-			(&Server{}).handleProxy(rec, req)
-
-			if rec.Code != http.StatusOK {
-				t.Fatalf("status = %d, want 200", rec.Code)
-			}
-			gotType, params, err := mime.ParseMediaType(rec.Header().Get("Content-Disposition"))
-			if err != nil {
-				t.Fatalf("Content-Disposition %q: %v", rec.Header().Get("Content-Disposition"), err)
-			}
-			if gotType != tt.wantType || params["filename"] != tt.wantFilename {
-				t.Fatalf("Content-Disposition = %s %q, want %s %q", gotType, params["filename"], tt.wantType, tt.wantFilename)
-			}
-		})
-	}
-
-	t.Run("download name cannot inject headers", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		stem := "a\"\r\nX-Evil: 1"
-		req := httptest.NewRequest(http.MethodGet, "/proxy.gif?url="+url.QueryEscape(media)+"&download="+url.QueryEscape(stem), nil)
-		(&Server{}).handleProxy(rec, req)
-
-		if v := rec.Header().Get("X-Evil"); v != "" {
-			t.Fatalf("injected header X-Evil = %q", v)
-		}
-		_, params, err := mime.ParseMediaType(rec.Header().Get("Content-Disposition"))
-		if err != nil {
-			t.Fatalf("Content-Disposition %q: %v", rec.Header().Get("Content-Disposition"), err)
-		}
-		if want := stem + ".gif"; params["filename"] != want {
-			t.Fatalf("filename = %q, want %q", params["filename"], want)
-		}
-	})
-}
 
 func TestPageLinks(t *testing.T) {
 	tests := []struct {

@@ -39,6 +39,11 @@ func clearConfigEnv(t *testing.T) {
 		"MEZZO_CACHE_SEARCH_MAX",
 		"MEZZO_CACHE_PROFILE_TTL",
 		"MEZZO_CACHE_PROFILE_MAX",
+		"MEZZO_CACHE_MEDIA_DIR",
+		"MEZZO_CACHE_MEDIA_MAX_MB",
+		"MEZZO_CACHE_MEDIA_MAX_FILE_MB",
+		"MEZZO_CACHE_MEDIA_TTL",
+		"MEZZO_CACHE_AVATAR_TTL",
 	} {
 		t.Setenv(key, "")
 	}
@@ -75,6 +80,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.CacheProfileMax != 200 {
 		t.Fatalf("CacheProfileMax = %d, want 200", cfg.CacheProfileMax)
+	}
+	if cfg.CacheMediaDir != "" {
+		t.Fatalf("CacheMediaDir = %q, want empty (disk cache off)", cfg.CacheMediaDir)
 	}
 }
 
@@ -122,6 +130,11 @@ func TestLoadParsesCacheEnvironment(t *testing.T) {
 	t.Setenv("MEZZO_CACHE_SEARCH_MAX", "45")
 	t.Setenv("MEZZO_CACHE_PROFILE_TTL", "90m")
 	t.Setenv("MEZZO_CACHE_PROFILE_MAX", "67")
+	t.Setenv("MEZZO_CACHE_MEDIA_DIR", "/var/cache/mezzo")
+	t.Setenv("MEZZO_CACHE_MEDIA_MAX_MB", "256")
+	t.Setenv("MEZZO_CACHE_MEDIA_MAX_FILE_MB", "8")
+	t.Setenv("MEZZO_CACHE_MEDIA_TTL", "48h")
+	t.Setenv("MEZZO_CACHE_AVATAR_TTL", "6h")
 
 	cfg := Load()
 
@@ -145,6 +158,21 @@ func TestLoadParsesCacheEnvironment(t *testing.T) {
 	}
 	if cfg.CacheProfileMax != 67 {
 		t.Fatalf("CacheProfileMax = %d, want 67", cfg.CacheProfileMax)
+	}
+	if cfg.CacheMediaDir != "/var/cache/mezzo" {
+		t.Fatalf("CacheMediaDir = %q, want /var/cache/mezzo", cfg.CacheMediaDir)
+	}
+	if cfg.CacheMediaMaxMB != 256 {
+		t.Fatalf("CacheMediaMaxMB = %d, want 256", cfg.CacheMediaMaxMB)
+	}
+	if cfg.CacheMediaMaxFileMB != 8 {
+		t.Fatalf("CacheMediaMaxFileMB = %d, want 8", cfg.CacheMediaMaxFileMB)
+	}
+	if cfg.CacheMediaTTL != 48*time.Hour {
+		t.Fatalf("CacheMediaTTL = %s, want 48h", cfg.CacheMediaTTL)
+	}
+	if cfg.CacheAvatarTTL != 6*time.Hour {
+		t.Fatalf("CacheAvatarTTL = %s, want 6h", cfg.CacheAvatarTTL)
 	}
 }
 

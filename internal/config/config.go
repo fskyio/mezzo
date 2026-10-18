@@ -38,6 +38,14 @@ type Config struct {
 	CacheSearchMax  int
 	CacheProfileTTL time.Duration
 	CacheProfileMax int
+
+	// Media cache on disk. It is off unless CacheMediaDir is set, and
+	// CacheDisabled turns it off as well.
+	CacheMediaDir       string
+	CacheMediaMaxMB     int
+	CacheMediaMaxFileMB int
+	CacheMediaTTL       time.Duration
+	CacheAvatarTTL      time.Duration
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -54,6 +62,12 @@ func Load() *Config {
 		CacheSearchMax:  envInt("MEZZO_CACHE_SEARCH_MAX", 500),
 		CacheProfileTTL: envDuration("MEZZO_CACHE_PROFILE_TTL", 30*time.Minute),
 		CacheProfileMax: envInt("MEZZO_CACHE_PROFILE_MAX", 200),
+
+		CacheMediaDir:       os.Getenv("MEZZO_CACHE_MEDIA_DIR"),
+		CacheMediaMaxMB:     envInt("MEZZO_CACHE_MEDIA_MAX_MB", 512),
+		CacheMediaMaxFileMB: envInt("MEZZO_CACHE_MEDIA_MAX_FILE_MB", 16),
+		CacheMediaTTL:       envDuration("MEZZO_CACHE_MEDIA_TTL", 168*time.Hour),
+		CacheAvatarTTL:      envDuration("MEZZO_CACHE_AVATAR_TTL", 24*time.Hour),
 	}
 }
 

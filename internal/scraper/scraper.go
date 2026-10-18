@@ -25,6 +25,7 @@ import (
 	"mezzo/internal/client"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -100,22 +101,66 @@ func (g *GifPage) Format(key string) GifFormat {
 	return g.Formats[0]
 }
 
-// Proxy generates a proxied URL for a given image URL
-func Proxy(imageURL string) string {
-	if imageURL == "" {
-		return ""
-	}
-	return fmt.Sprintf("/proxy.gif?url=%s", url.QueryEscape(imageURL))
+// mediaHosts are the Tenor hosts Mezzo is willing to fetch media from.
+var mediaHosts = map[string]bool{
+	"media.tenor.com":  true,
+	"media1.tenor.com": true,
+	"c.tenor.com":      true,
 }
 
-// ProxyDownload generates a proxied URL that makes the browser save the media
-// instead of displaying it. stem is the file name without extension; the
-// proxy takes the extension from imageURL.
-func ProxyDownload(imageURL, stem string) string {
-	if imageURL == "" {
+// Path prefixes of the media routes. The remainder of the path is the host
+// followed by the path on that host, so the URL still ends in the real file
+// name and extension (Discord only embeds a link as a GIF if it ends in .gif).
+const (
+	MediaPrefix  = "/media/"  // GIFs, MP4s, thumbnails
+	AvatarPrefix = "/avatar/" // profile avatars and banners
+)
+
+// MediaURL returns the Tenor URL for host and the path on that host, as
+// captured by the media routes. It reports false for hosts Mezzo does not
+// proxy and for paths that are empty or not in canonical form.
+func MediaURL(host, p string) (*url.URL, bool) {
+	if !mediaHosts[host] || p == "" || path.Clean("/"+p) != "/"+p {
+		return nil, false
+	}
+	return &url.URL{Scheme: "https", Host: host, Path: "/" + p}, true
+}
+
+// localMediaPath maps a Tenor media URL onto prefix. Any query is dropped, so
+// one file is always one URL. It returns "" if mediaURL is not a Tenor media
+// URL.
+func localMediaPath(prefix, mediaURL string) string {
+	u, err := url.Parse(mediaURL)
+	if err != nil || u.Scheme != "https" || !mediaHosts[u.Host] {
 		return ""
 	}
-	return fmt.Sprintf("/proxy.gif?url=%s&download=%s", url.QueryEscape(imageURL), url.QueryEscape(stem))
+	if _, ok := MediaURL(u.Host, strings.TrimPrefix(u.Path, "/")); !ok {
+		return ""
+	}
+	return prefix + u.Host + u.EscapedPath()
+}
+
+// MediaPath returns the local path that serves a GIF, MP4 or thumbnail from
+// mediaURL, or "" if mediaURL is not a Tenor media URL.
+func MediaPath(mediaURL string) string {
+	return localMediaPath(MediaPrefix, mediaURL)
+}
+
+// AvatarPath returns the local path that serves a profile avatar or banner
+// from mediaURL, or "" if mediaURL is not a Tenor media URL.
+func AvatarPath(mediaURL string) string {
+	return localMediaPath(AvatarPrefix, mediaURL)
+}
+
+// MediaDownload returns a local path that makes the browser save the media
+// instead of displaying it. stem is the file name without extension; the
+// server takes the extension from mediaURL.
+func MediaDownload(mediaURL, stem string) string {
+	p := MediaPath(mediaURL)
+	if p == "" {
+		return ""
+	}
+	return p + "?download=" + url.QueryEscape(stem)
 }
 
 func isTenorMedia(src string) bool {

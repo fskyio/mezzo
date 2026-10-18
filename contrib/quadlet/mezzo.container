@@ -10,10 +10,20 @@ DropCapability=ALL
 #Environment=MEZZO_CACHE_SEARCH_MAX=500
 #Environment=MEZZO_CACHE_PROFILE_TTL=30m
 #Environment=MEZZO_CACHE_PROFILE_MAX=200
+#Environment=MEZZO_CACHE_MEDIA_DIR=/cache
+#Environment=MEZZO_CACHE_MEDIA_MAX_MB=512
+#Environment=MEZZO_CACHE_MEDIA_MAX_FILE_MB=16
+#Environment=MEZZO_CACHE_MEDIA_TTL=168h
+#Environment=MEZZO_CACHE_AVATAR_TTL=24h
 Image=gitfield.org/fsky/mezzo:latest
 NoNewPrivileges=true
 PublishPort=8006:8006
 ReadOnly=true
+# To keep media on disk, uncomment MEZZO_CACHE_MEDIA_DIR and Tmpfs. The
+# tmpfs lives in memory and starts empty after a restart, so keep its size
+# above MEZZO_CACHE_MEDIA_MAX_MB. The image runs as UID 65532. For a cache
+# that survives restarts, mount a volume at /cache that this user can write to.
+#Tmpfs=/cache:size=512m,uid=65532,gid=65532
 
 [Service]
 Restart=always

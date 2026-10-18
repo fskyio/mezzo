@@ -23,24 +23,17 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"io"
 	"io/fs"
 	"log/slog"
 	"mezzo/internal/cache"
-	"mezzo/internal/client"
 	"mezzo/internal/config"
+	"mezzo/internal/mediacache"
 	"mezzo/internal/scraper"
-	"mime"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
-)
-
-const (
-	// CacheControl is the Cache-Control header value used for static assets
-	CacheControl = "max-age=604800"
 )
 
 // Server wires routes, templates, and the asset filesystem
@@ -55,6 +48,9 @@ type Server struct {
 	profileCache  *cache.Cache[*scraper.ProfilePage]
 	exploreCache  *cache.Cache[*scraper.SearchResponse]
 	trendingCache *cache.Cache[[]scraper.Trend]
+	// mediaStore is the optional on-disk copy of proxied media
+	mediaStore         *mediacache.Store
+	avatarCacheControl string
 }
 
 // BasePage contains template data shared by all pages
@@ -150,6 +146,9 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 		assets:     assets,
 		templates:  make(map[string]*template.Template),
 		version:    version,
+		// Avatars can change in place, so browsers revalidate them as often as
+		// the server refetches them
+		avatarCacheControl: fmt.Sprintf("public, max-age=%d", max(0, int(cfg.CacheAvatarTTL.Seconds()))),
 	}
 
 	if !cfg.CacheDisabled {
@@ -159,12 +158,29 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 		s.exploreCache = cache.New[*scraper.SearchResponse](cfg.CacheSearchTTL, cfg.CacheSearchMax)
 		// There is only one trending list, so one slot is enough
 		s.trendingCache = cache.New[[]scraper.Trend](cfg.CacheSearchTTL, 1)
+
+		if cfg.CacheMediaDir != "" {
+			if cfg.CacheMediaMaxMB <= 0 {
+				return nil, errors.New("MEZZO_CACHE_MEDIA_MAX_MB must be positive")
+			}
+			if cfg.CacheMediaTTL <= 0 || cfg.CacheAvatarTTL <= 0 {
+				return nil, errors.New("MEZZO_CACHE_MEDIA_TTL and MEZZO_CACHE_AVATAR_TTL must be positive")
+			}
+			store, err := mediacache.Open(cfg.CacheMediaDir, mediacache.Options{
+				MaxBytes:     int64(cfg.CacheMediaMaxMB) << 20,
+				MaxFileBytes: int64(cfg.CacheMediaMaxFileMB) << 20,
+				TTLs:         map[string]time.Duration{kindMedia: cfg.CacheMediaTTL, kindAvatar: cfg.CacheAvatarTTL},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to open media cache: %v", err)
+			}
+			s.mediaStore = store
+		}
 	}
 
 	funcMap := template.FuncMap{
-		"proxy": func(u string) string {
-			return scraper.Proxy(u)
-		},
+		"media":      scraper.MediaPath,
+		"avatar":     scraper.AvatarPath,
 		"searchPath": searchPath,
 		"formatDate": func(s string) string {
 			t, err := time.Parse(time.RFC3339, s)
@@ -236,7 +252,8 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /explore", s.handleExplore)
 	s.router.HandleFunc("GET /users/{username}", s.handleProfile)
 	s.router.HandleFunc("GET /official/{username}", s.handleProfile)
-	s.router.HandleFunc("GET /proxy.gif", s.handleProxy)
+	s.router.HandleFunc("GET "+scraper.MediaPrefix+"{host}/{path...}", s.handleMedia(kindMedia))
+	s.router.HandleFunc("GET "+scraper.AvatarPrefix+"{host}/{path...}", s.handleMedia(kindAvatar))
 
 	// Serve everything in static/ under /static/
 	staticFS, _ := fs.Sub(s.assets, "static")
@@ -352,7 +369,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	data := ViewPage{
 		BasePage: BasePage{
 			Title:      gifPage.Title,
-			OGImage:    scraper.Proxy(gifPage.ImageURL),
+			OGImage:    scraper.MediaPath(gifPage.ImageURL),
 			PatchesURL: s.patchesURL,
 			Version:    s.version,
 			Host:       r.Host,
@@ -394,7 +411,7 @@ func formatOptions(viewPath string, formats []scraper.GifFormat, active string) 
 		options = append(options, FormatOption{
 			Label:  f.Label,
 			Href:   href,
-			Src:    scraper.Proxy(f.URL),
+			Src:    scraper.MediaPath(f.URL),
 			Video:  f.Video,
 			Active: f.Key == active,
 		})
@@ -417,7 +434,7 @@ func downloadOptions(viewPath string, formats []scraper.GifFormat) []DownloadOpt
 			// SD and HD GIFs share a file name on Tenor's servers
 			stem += "-" + f.Key
 		}
-		options = append(options, DownloadOption{Label: f.Label, Href: scraper.ProxyDownload(f.URL, stem)})
+		options = append(options, DownloadOption{Label: f.Label, Href: scraper.MediaDownload(f.URL, stem)})
 	}
 	return options
 }
@@ -734,73 +751,6 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "profile.html", data)
 }
 
-func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
-	targetURL := r.URL.Query().Get("url")
-	if targetURL == "" {
-		s.handleError(w, r, http.StatusBadRequest)
-		return
-	}
-
-	// Allowlist Tenor media hosts
-	if !strings.HasPrefix(targetURL, "https://media.tenor.com/") &&
-		!strings.HasPrefix(targetURL, "https://media1.tenor.com/") &&
-		!strings.HasPrefix(targetURL, "https://c.tenor.com/") {
-		s.handleError(w, r, http.StatusBadRequest)
-		return
-	}
-
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
-	if err != nil {
-		s.handleError(w, r, http.StatusBadRequest)
-		return
-	}
-	// Browsers need range support to play and seek <video>; Safari refuses to
-	// play video from a server that ignores Range.
-	if rng := r.Header.Get("Range"); rng != "" {
-		req.Header.Set("Range", rng)
-	}
-
-	resp, err := client.Default.Do(req)
-	if err != nil {
-		slog.Error("failed to fetch proxy URL", "error", err)
-		s.handleError(w, r, http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
-		if v := resp.Header.Get(h); v != "" {
-			w.Header().Set(h, v)
-		}
-	}
-	w.Header().Set("Cache-Control", CacheControl)
-	disposition := "inline"
-	filename := path.Base(targetURL)
-	if q := r.URL.Query(); q.Has("download") {
-		disposition = "attachment"
-		// The extension always comes from the Tenor URL so a link cannot
-		// change the type of the saved file
-		if stem := q.Get("download"); stem != "" {
-			filename = path.Base(stem) + path.Ext(req.URL.Path)
-		}
-	}
-	if filename != "" && filename != "." {
-		// FormatMediaType quotes and escapes the name
-		if v := mime.FormatMediaType(disposition, map[string]string{"filename": filename}); v != "" {
-			w.Header().Set("Content-Disposition", v)
-		}
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		w.WriteHeader(resp.StatusCode)
-	}
-
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		slog.Error("failed to copy proxy body", "error", err)
-	}
-}
-
 func (s *Server) handleError(w http.ResponseWriter, r *http.Request, code int) {
 	w.WriteHeader(code)
 	details := errorDetails(code)
@@ -826,7 +776,8 @@ func tenorURLForRequest(r *http.Request) string {
 
 	requestPath := r.URL.Path
 	if requestPath == "" || requestPath == "/" ||
-		requestPath == "/proxy.gif" ||
+		strings.HasPrefix(requestPath, scraper.MediaPrefix) ||
+		strings.HasPrefix(requestPath, scraper.AvatarPrefix) ||
 		requestPath == "/static" ||
 		strings.HasPrefix(requestPath, "/static/") {
 		return ""

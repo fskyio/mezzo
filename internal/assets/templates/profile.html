@@ -3,12 +3,12 @@
 		<div class="profile-header">
 			{{if .BannerURL}}
 			<div class="profile-banner">
-				<img src="{{proxy .BannerURL}}" alt="{{.DisplayName}} banner">
+				<img src="{{avatar .BannerURL}}" alt="{{.DisplayName}} banner">
 			</div>
 			{{end}}
 			<div class="profile-info">
 				{{if .AvatarURL}}
-				<img class="profile-avatar" src="{{proxy .AvatarURL}}" alt="{{.DisplayName}}">
+				<img class="profile-avatar" src="{{avatar .AvatarURL}}" alt="{{.DisplayName}}">
 				{{else}}
 				<div class="profile-avatar-placeholder">{{printf "%.1s" .DisplayName}}</div>
 				{{end}}
@@ -40,7 +40,7 @@
 		<div class="search-results">
 			{{range .GIFs}}
 			<a href="{{.URL}}">
-				<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+				<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
 			</a>
 			{{end}}
 		</div>

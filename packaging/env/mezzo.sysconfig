@@ -12,3 +12,11 @@ MEZZO_PORT=8006
 # MEZZO_CACHE_SEARCH_MAX=500
 # MEZZO_CACHE_PROFILE_TTL=30m
 # MEZZO_CACHE_PROFILE_MAX=200
+
+# Media cache on disk (off unless a directory is set). The systemd unit
+# provides /var/cache/mezzo for this.
+# MEZZO_CACHE_MEDIA_DIR=/var/cache/mezzo
+# MEZZO_CACHE_MEDIA_MAX_MB=512
+# MEZZO_CACHE_MEDIA_MAX_FILE_MB=16
+# MEZZO_CACHE_MEDIA_TTL=168h
+# MEZZO_CACHE_AVATAR_TTL=24h

@@ -7,6 +7,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 DynamicUser=yes
+CacheDirectory=mezzo
+CacheDirectoryMode=0700
 EnvironmentFile=-/etc/default/mezzo
 EnvironmentFile=-/etc/sysconfig/mezzo
 EnvironmentFile=-/etc/conf.d/mezzo

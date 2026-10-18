@@ -3,7 +3,7 @@
 	<div class="search-results" role="region" aria-label="Search results">
 		{{range .Results}}
 		<a href="{{.URL}}">
-			<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+			<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
 		</a>
 		{{end}}
 	</div>
