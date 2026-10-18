@@ -20,8 +20,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,24 +53,34 @@ type Config struct {
 // Load reads configuration from environment variables with sensible defaults.
 // For backward compatibility, unprefixed PORT and PATCHES_URL are accepted as
 // fallbacks when their MEZZO_ prefixed counterparts are not set.
-func Load() *Config {
-	return &Config{
+//
+// An unset or empty variable yields its default. A variable that is set but
+// cannot be parsed is an error, and Load reports every such variable at once.
+func Load() (*Config, error) {
+	var p parser
+
+	cfg := &Config{
 		Port:            envOrFallback("MEZZO_PORT", "PORT", "8006"),
 		PatchesURL:      envOrFallback("MEZZO_PATCHES_URL", "PATCHES_URL", ""),
-		CacheDisabled:   envBool("MEZZO_CACHE_DISABLED", false),
-		CacheGifTTL:     envDuration("MEZZO_CACHE_GIF_TTL", 1*time.Hour),
-		CacheGifMax:     envInt("MEZZO_CACHE_GIF_MAX", 1000),
-		CacheSearchTTL:  envDuration("MEZZO_CACHE_SEARCH_TTL", 10*time.Minute),
-		CacheSearchMax:  envInt("MEZZO_CACHE_SEARCH_MAX", 500),
-		CacheProfileTTL: envDuration("MEZZO_CACHE_PROFILE_TTL", 30*time.Minute),
-		CacheProfileMax: envInt("MEZZO_CACHE_PROFILE_MAX", 200),
+		CacheDisabled:   p.bool("MEZZO_CACHE_DISABLED", false),
+		CacheGifTTL:     p.duration("MEZZO_CACHE_GIF_TTL", 1*time.Hour),
+		CacheGifMax:     p.int("MEZZO_CACHE_GIF_MAX", 1000),
+		CacheSearchTTL:  p.duration("MEZZO_CACHE_SEARCH_TTL", 10*time.Minute),
+		CacheSearchMax:  p.int("MEZZO_CACHE_SEARCH_MAX", 500),
+		CacheProfileTTL: p.duration("MEZZO_CACHE_PROFILE_TTL", 30*time.Minute),
+		CacheProfileMax: p.int("MEZZO_CACHE_PROFILE_MAX", 200),
 
 		CacheMediaDir:       os.Getenv("MEZZO_CACHE_MEDIA_DIR"),
-		CacheMediaMaxMB:     envInt("MEZZO_CACHE_MEDIA_MAX_MB", 512),
-		CacheMediaMaxFileMB: envInt("MEZZO_CACHE_MEDIA_MAX_FILE_MB", 16),
-		CacheMediaTTL:       envDuration("MEZZO_CACHE_MEDIA_TTL", 168*time.Hour),
-		CacheAvatarTTL:      envDuration("MEZZO_CACHE_AVATAR_TTL", 24*time.Hour),
+		CacheMediaMaxMB:     p.int("MEZZO_CACHE_MEDIA_MAX_MB", 512),
+		CacheMediaMaxFileMB: p.int("MEZZO_CACHE_MEDIA_MAX_FILE_MB", 16),
+		CacheMediaTTL:       p.duration("MEZZO_CACHE_MEDIA_TTL", 168*time.Hour),
+		CacheAvatarTTL:      p.duration("MEZZO_CACHE_AVATAR_TTL", 24*time.Hour),
 	}
+
+	if len(p.errs) > 0 {
+		return nil, fmt.Errorf("invalid environment: %s", strings.Join(p.errs, "; "))
+	}
+	return cfg, nil
 }
 
 // envOrFallback returns the value of the primary env var, falling back to the
@@ -83,38 +95,33 @@ func envOrFallback(primary, legacy, defaultVal string) string {
 	return defaultVal
 }
 
-func envBool(key string, defaultVal bool) bool {
-	v := os.Getenv(key)
-	if v == "" {
-		return defaultVal
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return defaultVal
-	}
-	return b
+// parser records every variable that is set but unparsable, so Load can report
+// them together instead of one per restart.
+type parser struct {
+	errs []string
 }
 
-func envDuration(key string, defaultVal time.Duration) time.Duration {
-	v := os.Getenv(key)
-	if v == "" {
-		return defaultVal
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return defaultVal
-	}
-	return d
+func (p *parser) bool(key string, defaultVal bool) bool {
+	return parseEnv(p, key, defaultVal, strconv.ParseBool)
 }
 
-func envInt(key string, defaultVal int) int {
+func (p *parser) duration(key string, defaultVal time.Duration) time.Duration {
+	return parseEnv(p, key, defaultVal, time.ParseDuration)
+}
+
+func (p *parser) int(key string, defaultVal int) int {
+	return parseEnv(p, key, defaultVal, strconv.Atoi)
+}
+
+func parseEnv[T any](p *parser, key string, defaultVal T, parse func(string) (T, error)) T {
 	v := os.Getenv(key)
 	if v == "" {
 		return defaultVal
 	}
-	n, err := strconv.Atoi(v)
+	parsed, err := parse(v)
 	if err != nil {
+		p.errs = append(p.errs, fmt.Sprintf("%s: %v", key, err))
 		return defaultVal
 	}
-	return n
+	return parsed
 }

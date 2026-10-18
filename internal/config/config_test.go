@@ -20,6 +20,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,10 +50,20 @@ func clearConfigEnv(t *testing.T) {
 	}
 }
 
+func mustLoad(t *testing.T) *Config {
+	t.Helper()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	return cfg
+}
+
 func TestLoadDefaults(t *testing.T) {
 	clearConfigEnv(t)
 
-	cfg := Load()
+	cfg := mustLoad(t)
 
 	if cfg.Port != "8006" {
 		t.Fatalf("Port = %q, want %q", cfg.Port, "8006")
@@ -94,7 +105,7 @@ func TestLoadUsesPrefixedEnvironmentBeforeLegacyFallbacks(t *testing.T) {
 	t.Setenv("MEZZO_PORT", "7000")
 	t.Setenv("MEZZO_PATCHES_URL", "https://mezzo.example/patches")
 
-	cfg := Load()
+	cfg := mustLoad(t)
 
 	if cfg.Port != "7000" {
 		t.Fatalf("Port = %q, want prefixed value", cfg.Port)
@@ -110,7 +121,7 @@ func TestLoadUsesLegacyFallbacks(t *testing.T) {
 	t.Setenv("PORT", "9000")
 	t.Setenv("PATCHES_URL", "https://legacy.example/patches")
 
-	cfg := Load()
+	cfg := mustLoad(t)
 
 	if cfg.Port != "9000" {
 		t.Fatalf("Port = %q, want legacy value", cfg.Port)
@@ -136,7 +147,7 @@ func TestLoadParsesCacheEnvironment(t *testing.T) {
 	t.Setenv("MEZZO_CACHE_MEDIA_TTL", "48h")
 	t.Setenv("MEZZO_CACHE_AVATAR_TTL", "6h")
 
-	cfg := Load()
+	cfg := mustLoad(t)
 
 	if !cfg.CacheDisabled {
 		t.Fatal("CacheDisabled = false, want true")
@@ -176,22 +187,52 @@ func TestLoadParsesCacheEnvironment(t *testing.T) {
 	}
 }
 
-func TestLoadFallsBackForInvalidCacheEnvironment(t *testing.T) {
+func TestLoadRejectsInvalidEnvironment(t *testing.T) {
+	for _, tc := range []struct {
+		key, value string
+	}{
+		{"MEZZO_CACHE_DISABLED", "definitely"},
+		{"MEZZO_CACHE_GIF_TTL", "later"},
+		{"MEZZO_CACHE_GIF_TTL", "1hour"},
+		{"MEZZO_CACHE_GIF_MAX", "many"},
+		{"MEZZO_CACHE_MEDIA_MAX_MB", "1.5"},
+	} {
+		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
+			clearConfigEnv(t)
+			t.Setenv(tc.key, tc.value)
+
+			cfg, err := Load()
+			if err == nil {
+				t.Fatalf("Load() = %+v, want error", cfg)
+			}
+			if cfg != nil {
+				t.Fatalf("Load() config = %+v, want nil on error", cfg)
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Fatalf("error %q does not name %s", err, tc.key)
+			}
+		})
+	}
+}
+
+func TestLoadReportsEveryInvalidVariable(t *testing.T) {
 	clearConfigEnv(t)
 
 	t.Setenv("MEZZO_CACHE_DISABLED", "definitely")
 	t.Setenv("MEZZO_CACHE_GIF_TTL", "later")
 	t.Setenv("MEZZO_CACHE_GIF_MAX", "many")
+	t.Setenv("MEZZO_CACHE_SEARCH_MAX", "500")
 
-	cfg := Load()
-
-	if cfg.CacheDisabled {
-		t.Fatal("CacheDisabled = true, want default false")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want error")
 	}
-	if cfg.CacheGifTTL != time.Hour {
-		t.Fatalf("CacheGifTTL = %s, want default 1h", cfg.CacheGifTTL)
+	for _, key := range []string{"MEZZO_CACHE_DISABLED", "MEZZO_CACHE_GIF_TTL", "MEZZO_CACHE_GIF_MAX"} {
+		if !strings.Contains(err.Error(), key) {
+			t.Fatalf("error %q does not name %s", err, key)
+		}
 	}
-	if cfg.CacheGifMax != 1000 {
-		t.Fatalf("CacheGifMax = %d, want default 1000", cfg.CacheGifMax)
+	if strings.Contains(err.Error(), "MEZZO_CACHE_SEARCH_MAX") {
+		t.Fatalf("error %q names valid variable MEZZO_CACHE_SEARCH_MAX", err)
 	}
 }

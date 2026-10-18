@@ -144,6 +144,8 @@ The application can be configured using the following environment variables:
 > [!NOTE]
 > For backward compatibility, `PORT` and `PATCHES_URL` (without the `MEZZO_` prefix) are still accepted as fallbacks.
 
+A variable that is set but cannot be parsed (for example `MEZZO_CACHE_GIF_TTL=1hour`) stops Mezzo from starting, and the error names every such variable. Unset or empty variables use the default.
+
 ## Media cache on disk
 Out of the box, Mezzo fetches every GIF, video, thumbnail and avatar from Tenor each time someone asks for it. Set `MEZZO_CACHE_MEDIA_DIR` to a directory Mezzo can write to and it keeps a copy there instead, so repeat views load faster and Tenor sees fewer requests from your instance.
 
