@@ -81,6 +81,12 @@ type ViewPage struct {
 	Dimensions      string
 	Created         string
 	Downloads       []DownloadOption
+	// Related is a page of related GIFs. They start collapsed; RelatedOpen
+	// expands them for pages reached through their pagination links.
+	Related        []scraper.SearchResult
+	RelatedOpen    bool
+	RelatedPrevURL string
+	RelatedNextURL string
 }
 
 // DownloadOption is one entry in the download menu on the view page
@@ -388,7 +394,32 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	media := gifPage.Format(r.URL.Query().Get("format"))
+	query := r.URL.Query()
+	media := gifPage.Format(query.Get("format"))
+
+	// The first page of related GIFs comes with the view page; later ones
+	// need the API
+	pos := query.Get("pos")
+	related := gifPage.Related
+	if pos != "" && gifPage.ID != "" {
+		more, hit, err := s.relatedGIFs(gifPage.ID, pos)
+		if err != nil {
+			slog.Error("tenor API failed for related GIFs", "error", err)
+			s.handleError(w, r, http.StatusBadGateway)
+			return
+		}
+		related = *more
+		if !hit {
+			cacheStatus = "MISS"
+		}
+	}
+
+	// Keep the chosen format while paging through related GIFs
+	format := ""
+	if media.Key != gifPage.Formats[0].Key {
+		format = media.Key
+	}
+	relatedPrev, relatedNext := relatedLinks(r.URL.EscapedPath(), format, pos, query.Get("prev"), related.Next)
 
 	w.Header().Set("Mezzo-Cache", cacheStatus)
 
@@ -415,9 +446,64 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		Dimensions:      gifPage.Dimensions,
 		Created:         gifPage.Created,
 		Downloads:       downloadOptions(r.URL.EscapedPath(), gifPage.Formats),
+		Related:         related.Results,
+		RelatedOpen:     query.Has("pos"),
+		RelatedPrevURL:  relatedPrev,
+		RelatedNextURL:  relatedNext,
 	}
 
 	s.render(w, "view.html", data)
+}
+
+// relatedGIFs returns a page of the GIFs related to the GIF with the given ID
+// after the first one, which comes with the view page. hit reports whether it
+// was cached.
+func (s *Server) relatedGIFs(id, pos string) (resp *scraper.SearchResponse, hit bool, err error) {
+	key := "related\x00" + id + "\x00" + pos
+
+	if s.searchCache != nil {
+		if cached, ok := s.searchCache.Get(key); ok {
+			return cached, true, nil
+		}
+	}
+
+	resp, err = scraper.APIRelated(id, pos)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if s.searchCache != nil {
+		s.searchCache.Set(key, resp)
+	}
+	return resp, false, nil
+}
+
+// relatedLinks returns the Previous and Next links for the related GIFs on the
+// view page at viewPath, like pageLinks does for other paginated results. They
+// keep format, a non-default ?format= value, and jump to the related GIFs,
+// which a pos parameter expands, so the link back to the first page carries an
+// empty one.
+func relatedLinks(viewPath, format, pos, prev, next string) (prevURL, nextURL string) {
+	link := func(cursor, before string) string {
+		q := url.Values{}
+		if format != "" {
+			q.Set("format", format)
+		}
+		q.Set("pos", cursor)
+		if before != "" {
+			q.Set("prev", before)
+		}
+		return viewPath + "?" + q.Encode() + "#related"
+	}
+
+	// Carry the current pos as prev so the next page can link back to it
+	if next != "" {
+		nextURL = link(next, pos)
+	}
+	if pos != "" {
+		prevURL = link(prev, "")
+	}
+	return prevURL, nextURL
 }
 
 // formatOptions builds the format switcher links for the view page at viewPath.

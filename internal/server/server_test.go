@@ -336,6 +336,33 @@ func TestPageLinks(t *testing.T) {
 	}
 }
 
+func TestRelatedLinks(t *testing.T) {
+	tests := []struct {
+		name               string
+		format             string
+		pos, prev, next    string
+		wantPrev, wantNext string
+	}{
+		{name: "first page", next: "b", wantNext: "/v?pos=b#related"},
+		// The first page needs an empty pos to open the related GIFs
+		{name: "second page", pos: "b", next: "c", wantPrev: "/v?pos=#related", wantNext: "/v?pos=c&prev=b#related"},
+		{name: "third page", pos: "c", prev: "b", next: "d", wantPrev: "/v?pos=b#related", wantNext: "/v?pos=d&prev=c#related"},
+		{name: "last page", pos: "c", prev: "b", wantPrev: "/v?pos=b#related"},
+		{name: "only page"},
+		{name: "keeps the format", format: "mp4", pos: "b", next: "c", wantPrev: "/v?format=mp4&pos=#related", wantNext: "/v?format=mp4&pos=c&prev=b#related"},
+		{name: "cursor is escaped", pos: "1.5", next: "a&b=c", wantPrev: "/v?pos=#related", wantNext: "/v?pos=a%26b%3Dc&prev=1.5#related"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPrev, gotNext := relatedLinks("/v", tt.format, tt.pos, tt.prev, tt.next)
+			if gotPrev != tt.wantPrev || gotNext != tt.wantNext {
+				t.Fatalf("relatedLinks = (%q, %q), want (%q, %q)", gotPrev, gotNext, tt.wantPrev, tt.wantNext)
+			}
+		})
+	}
+}
+
 func TestSearchPathRoundTrips(t *testing.T) {
 	for _, term := range []string{"good night", "what? #1", "100% real", "café"} {
 		p := searchPath(term)
@@ -722,4 +749,111 @@ func TestProfileLaterPageNeedsTheAPI(t *testing.T) {
 	if code, _ := getPage(t, "/users/mezzo?pos=gif-next"); code != http.StatusBadGateway {
 		t.Fatalf("later page status = %d, want 502 when the API fails", code)
 	}
+}
+
+// viewHTML returns a Tenor view page for the GIF with ID 1 whose store-cache
+// holds the given related GIFs and cursor.
+func viewHTML(related []string, next string) string {
+	return `<html><body><h1>Cat</h1><img src="https://media.tenor.com/c/cat.gif">` +
+		`<script id="store-cache">{"gifs":{` +
+		`"byId":{"1":{"results":[{"id":"1","media_formats":{"mediumgif":{"url":"https://media.tenor.com/c/cat.gif"}}}]}},` +
+		`"related":{"1":{"next":"` + next + `","results":[` + strings.Join(related, ",") + `]}}` +
+		`}}</script></body></html>`
+}
+
+func TestViewRelatedGIFs(t *testing.T) {
+	var apiCalls []url.Values
+	apiFails := false
+	stubTenor(t, func(u *url.URL) (int, string) {
+		switch {
+		case u.Host == "tenor.com" && u.Path == "/view/lonely-gif-1":
+			return http.StatusOK, viewHTML(nil, "")
+		case u.Host == "tenor.com":
+			return http.StatusOK, viewHTML([]string{profileUpload("dog-gif-2", "d2.gif")}, "r2")
+		case u.Path == "/v2/related":
+			apiCalls = append(apiCalls, u.Query())
+			if apiFails {
+				return http.StatusInternalServerError, ""
+			}
+			return http.StatusOK, `{"results":[` + profileUpload("bird-gif-3", "b3.gif") + `],"next":""}`
+		}
+		return http.StatusNotFound, ""
+	})
+
+	// reset forgets the requests of earlier subtests
+	reset := func() { apiCalls = nil }
+
+	t.Run("first page starts collapsed", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/view/cat-gif-1")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		for _, want := range []string{
+			`<details class="related" id="related">`,
+			`href="/view/dog-gif-2"`,
+			`href="/view/cat-gif-1?pos=r2#related"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("view page is missing %s", want)
+			}
+		}
+		if strings.Contains(body, "Previous page") {
+			t.Fatal("first page has a Previous link")
+		}
+		if len(apiCalls) != 0 {
+			t.Fatalf("first page called the API: %v", apiCalls)
+		}
+	})
+
+	t.Run("later page is expanded", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/view/cat-gif-1?pos=r2")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		for _, want := range []string{
+			`<details class="related" id="related" open>`,
+			`href="/view/bird-gif-3"`,
+			`href="/view/cat-gif-1?pos=#related"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("later page is missing %s", want)
+			}
+		}
+		if strings.Contains(body, `href="/view/dog-gif-2"`) || strings.Contains(body, "Next page") {
+			t.Fatal("later page repeats the first page or has a Next link on the last page")
+		}
+		if len(apiCalls) != 1 || apiCalls[0].Get("id") != "1" || apiCalls[0].Get("pos") != "r2" {
+			t.Fatalf("API calls = %v, want one for the GIF's related GIFs at r2", apiCalls)
+		}
+	})
+
+	t.Run("link back to the first page is expanded", func(t *testing.T) {
+		reset()
+		_, body := getPage(t, "/view/cat-gif-1?pos=")
+		if !strings.Contains(body, `<details class="related" id="related" open>`) || !strings.Contains(body, `href="/view/dog-gif-2"`) {
+			t.Fatal("first page is not expanded or misses its related GIFs")
+		}
+		if len(apiCalls) != 0 {
+			t.Fatalf("first page called the API: %v", apiCalls)
+		}
+	})
+
+	t.Run("no related GIFs", func(t *testing.T) {
+		reset()
+		code, body := getPage(t, "/view/lonely-gif-1")
+		if code != http.StatusOK || strings.Contains(body, "Related GIFs") {
+			t.Fatalf("status = %d, want 200 without a related section", code)
+		}
+	})
+
+	t.Run("later page needs the API", func(t *testing.T) {
+		reset()
+		apiFails = true
+		t.Cleanup(func() { apiFails = false })
+		if code, _ := getPage(t, "/view/cat-gif-1?pos=r2"); code != http.StatusBadGateway {
+			t.Fatalf("status = %d, want 502 when the API fails", code)
+		}
+	})
 }

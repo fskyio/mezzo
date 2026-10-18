@@ -342,7 +342,8 @@ pre code {
 	transform: scale(0.94);
 }
 
-.download-menu summary::after {
+.download-menu summary::after,
+.related summary::after {
 	content: "";
 	width: 0.4em;
 	height: 0.4em;
@@ -352,7 +353,8 @@ pre code {
 	transition: transform 0.2s;
 }
 
-.download-menu[open] summary::after {
+.download-menu[open] summary::after,
+.related[open] summary::after {
 	transform: translateY(0.1em) rotate(-135deg);
 }
 
@@ -390,9 +392,35 @@ pre code {
 @media (prefers-reduced-motion: reduce) {
 	.download-button,
 	.download-menu summary::after,
+	.related summary::after,
 	.download-menu li a {
 		transition: none;
 	}
+}
+
+.related {
+	margin-top: 2rem;
+	border-top: 1px solid var(--border);
+}
+
+.related summary {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 1rem 0;
+	font-size: 1.15rem;
+	font-weight: bold;
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+}
+
+.related summary::-webkit-details-marker {
+	display: none;
+}
+
+.related summary:hover {
+	color: var(--accent);
 }
 
 .error-page {

@@ -92,6 +92,24 @@
 			{{end}}
 		</div>
 	</div>
+	{{if .Related}}
+	<details class="related" id="related"{{if .RelatedOpen}} open{{end}}>
+		<summary>Related GIFs</summary>
+		<div class="search-results" role="region" aria-label="Related GIFs">
+			{{range .Related}}
+			<a href="{{.URL}}">
+				<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+			</a>
+			{{end}}
+		</div>
+		{{if or .RelatedPrevURL .RelatedNextURL}}
+		<nav class="pagination" aria-label="Related GIFs pagination">
+			{{if .RelatedPrevURL}}<a class="button secondary" href="{{.RelatedPrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
+			{{if .RelatedNextURL}}<a class="button primary" href="{{.RelatedNextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
+		</nav>
+		{{end}}
+	</details>
+	{{end}}
 	{{if .Formats}}
 	<script src="/static/view.js{{if .Version}}?v={{.Version}}{{end}}" defer></script>
 	{{end}}

@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -56,6 +57,8 @@ type SearchResult struct {
 
 // GifPage represents the scraped data from a GIF view page
 type GifPage struct {
+	// ID is Tenor's ID of the GIF; empty if the page does not describe it
+	ID           string
 	Title        string
 	ImageURL     string
 	Formats      []GifFormat
@@ -69,6 +72,9 @@ type GifPage struct {
 	Duration     string
 	Dimensions   string
 	Created      string
+	// Related is the first page of related GIFs, which Tenor embeds in the
+	// view page. Next continues it through APIRelated.
+	Related SearchResponse
 }
 
 // GifFormat is one rendition of a GIF that Tenor offers on its view page.
@@ -277,12 +283,14 @@ func GetGif(path string) (*GifPage, error) {
 		}
 	})
 
-	formats := parseGifFormats(doc.Find("script#store-cache").Text(), path)
+	cached := parseGifStoreCache(doc.Find("script#store-cache").Text(), path)
+	formats := cached.formats
 	if len(formats) == 0 {
 		formats = []GifFormat{{Key: gifFormatSpecs[0].key, Label: gifFormatSpecs[0].label, URL: imageURL}}
 	}
 
 	return &GifPage{
+		ID:           cached.id,
 		Title:        title,
 		ImageURL:     imageURL,
 		Formats:      formats,
@@ -296,46 +304,63 @@ func GetGif(path string) (*GifPage, error) {
 		Duration:     duration,
 		Dimensions:   dimensions,
 		Created:      created,
+		Related:      cached.related,
 	}, nil
 }
 
 // storeCacheGIFPage is the part of the view page's store-cache blob that holds
-// the viewed GIF. It is kept separate from storeCacheData so a shape change
-// here cannot break profile parsing.
+// the viewed GIF and the GIFs related to it, both keyed by the GIF's ID. It is
+// kept separate from storeCacheData so a shape change here cannot break
+// profile parsing.
 type storeCacheGIFPage struct {
 	GIFs struct {
-		ByID map[string]storeCacheGIFSet `json:"byId"`
+		ByID    map[string]storeCacheGIFSet `json:"byId"`
+		Related map[string]storeCacheGIFSet `json:"related"`
 	} `json:"gifs"`
 }
 
-// parseGifFormats extracts the available renditions of the GIF at path from the
-// store-cache JSON blob, in gifFormatSpecs order. It returns nil if the blob is
-// missing, malformed, or does not describe the GIF.
-func parseGifFormats(jsonText, path string) []GifFormat {
+// gifStoreCache is what the view page's store-cache blob says about the GIF.
+type gifStoreCache struct {
+	id      string
+	formats []GifFormat    // in gifFormatSpecs order
+	related SearchResponse // without the GIF itself
+}
+
+// parseGifStoreCache extracts the ID, the available renditions and the first
+// page of related GIFs of the GIF at path from the store-cache JSON blob. It
+// returns the zero value if the blob is missing, malformed, or does not
+// describe the GIF.
+func parseGifStoreCache(jsonText, path string) gifStoreCache {
 	var data storeCacheGIFPage
 	if err := json.Unmarshal([]byte(jsonText), &data); err != nil {
-		return nil
+		return gifStoreCache{}
 	}
 
 	// The GIF ID is the trailing number of the slug: /view/happy-cat-gif-1234
-	set, ok := data.GIFs.ByID[path[strings.LastIndex(path, "-")+1:]]
+	id := path[strings.LastIndex(path, "-")+1:]
+	set, ok := data.GIFs.ByID[id]
 	if !ok && len(data.GIFs.ByID) == 1 {
 		// Tenor redirects legacy IDs, so the slug may not match the blob's key
-		for _, only := range data.GIFs.ByID {
-			set, ok = only, true
+		for key, only := range data.GIFs.ByID {
+			id, set, ok = key, only, true
 		}
 	}
 	if !ok || len(set.Results) == 0 {
-		return nil
+		return gifStoreCache{}
 	}
 
-	var formats []GifFormat
+	page := gifStoreCache{id: id}
 	for _, spec := range gifFormatSpecs {
 		if m, ok := set.Results[0].MediaFormats[spec.tenorKey]; ok && m.URL != "" {
-			formats = append(formats, GifFormat{Key: spec.key, Label: spec.label, URL: m.URL, Video: spec.video})
+			page.formats = append(page.formats, GifFormat{Key: spec.key, Label: spec.label, URL: m.URL, Video: spec.video})
 		}
 	}
-	return formats
+
+	related := data.GIFs.Related[id]
+	// Tenor lists the GIF itself first
+	related.Results = slices.DeleteFunc(related.Results, func(g storeCacheGIF) bool { return g.ID == id })
+	page.related = searchResponse(related)
+	return page
 }
 
 // GetSearch scrapes a Tenor search page for results
@@ -691,57 +716,61 @@ func parseStoreCache(jsonText string, path string) (*ProfilePage, bool) {
 func profileUploads(uploads storeCacheProfileUploads, username string, kind ProfileKind) SearchResponse {
 	want := username + "-" + string(kind) + "-profile-public"
 
-	var resp SearchResponse
 	for key, set := range uploads.SearchByUsername {
-		if !strings.EqualFold(key, want) {
+		if strings.EqualFold(key, want) {
+			return searchResponse(set)
+		}
+	}
+	return SearchResponse{}
+}
+
+// searchResponse converts a set of GIFs from the store-cache, dropping those
+// without a thumbnail or a view link.
+func searchResponse(set storeCacheGIFSet) SearchResponse {
+	resp := SearchResponse{Next: set.Next}
+	for _, g := range set.Results {
+		imageURL := ""
+		width := 0
+		height := 0
+		// Prefer tinygif for thumbnails
+		if m, ok := g.MediaFormats["tinygif"]; ok && m.URL != "" {
+			imageURL = m.URL
+			if len(m.Dims) >= 2 {
+				width = m.Dims[0]
+				height = m.Dims[1]
+			}
+		} else if m, ok := g.MediaFormats["gif"]; ok && m.URL != "" {
+			imageURL = m.URL
+			if len(m.Dims) >= 2 {
+				width = m.Dims[0]
+				height = m.Dims[1]
+			}
+		}
+
+		viewPath := ""
+		if g.ItemURL != "" {
+			viewPath = strings.TrimPrefix(g.ItemURL, TenorBaseURL)
+		}
+
+		if viewPath == "" || imageURL == "" {
 			continue
 		}
-		resp.Next = set.Next
-		for _, g := range set.Results {
-			imageURL := ""
-			width := 0
-			height := 0
-			// Prefer tinygif for thumbnails
-			if m, ok := g.MediaFormats["tinygif"]; ok && m.URL != "" {
-				imageURL = m.URL
-				if len(m.Dims) >= 2 {
-					width = m.Dims[0]
-					height = m.Dims[1]
-				}
-			} else if m, ok := g.MediaFormats["gif"]; ok && m.URL != "" {
-				imageURL = m.URL
-				if len(m.Dims) >= 2 {
-					width = m.Dims[0]
-					height = m.Dims[1]
-				}
-			}
 
-			viewPath := ""
-			if g.ItemURL != "" {
-				viewPath = strings.TrimPrefix(g.ItemURL, TenorBaseURL)
-			}
-
-			if viewPath == "" || imageURL == "" {
-				continue
-			}
-
-			alt := g.ContentDesc
-			if alt == "" {
-				alt = g.H1Title
-			}
-			if alt == "" {
-				alt = g.Title
-			}
-
-			resp.Results = append(resp.Results, SearchResult{
-				URL:      viewPath,
-				ImageURL: imageURL,
-				Alt:      alt,
-				Width:    width,
-				Height:   height,
-			})
+		alt := g.ContentDesc
+		if alt == "" {
+			alt = g.H1Title
 		}
-		break
+		if alt == "" {
+			alt = g.Title
+		}
+
+		resp.Results = append(resp.Results, SearchResult{
+			URL:      viewPath,
+			ImageURL: imageURL,
+			Alt:      alt,
+			Width:    width,
+			Height:   height,
+		})
 	}
 	return resp
 }

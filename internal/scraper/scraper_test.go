@@ -470,7 +470,7 @@ func TestParseProfileKeepsStickersOutOfEmptyGIFList(t *testing.T) {
 	}
 }
 
-func TestParseGifFormats(t *testing.T) {
+func TestParseGifStoreCache(t *testing.T) {
 	const blob = `{"gifs":{"byId":{"123":{"results":[{"media_formats":{
 		"mediumgif":{"url":"https://media1.tenor.com/m/x/AAAAd/cat.gif"},
 		"gif":{"url":"https://media1.tenor.com/m/x/AAAAC/cat.gif"},
@@ -479,7 +479,7 @@ func TestParseGifFormats(t *testing.T) {
 	}}]}}}}`
 
 	t.Run("maps tenor formats in switcher order", func(t *testing.T) {
-		got := parseGifFormats(blob, "/view/cat-gif-123")
+		got := parseGifStoreCache(blob, "/view/cat-gif-123").formats
 		want := []GifFormat{
 			{Key: "sd", Label: "SD GIF", URL: "https://media1.tenor.com/m/x/AAAAd/cat.gif"},
 			{Key: "hd", Label: "HD GIF", URL: "https://media1.tenor.com/m/x/AAAAC/cat.gif"},
@@ -496,18 +496,19 @@ func TestParseGifFormats(t *testing.T) {
 	})
 
 	t.Run("skips formats tenor does not offer", func(t *testing.T) {
-		got := parseGifFormats(`{"gifs":{"byId":{"1":{"results":[{"media_formats":{
+		got := parseGifStoreCache(`{"gifs":{"byId":{"1":{"results":[{"media_formats":{
 			"mediumgif":{"url":"https://media.tenor.com/sd.gif"},
 			"gif":{"url":""}
-		}}]}}}}`, "/view/cat-gif-1")
+		}}]}}}}`, "/view/cat-gif-1").formats
 		if len(got) != 1 || got[0].Key != "sd" {
 			t.Fatalf("got %+v, want only the SD GIF", got)
 		}
 	})
 
 	t.Run("falls back to the only entry when the slug id is stale", func(t *testing.T) {
-		if got := parseGifFormats(blob, "/view/cat-gif-999"); len(got) != 3 {
-			t.Fatalf("got %d formats, want 3", len(got))
+		got := parseGifStoreCache(blob, "/view/cat-gif-999")
+		if len(got.formats) != 3 || got.id != "123" {
+			t.Fatalf("got id %q and %d formats, want the blob's id 123 and 3 formats", got.id, len(got.formats))
 		}
 	})
 
@@ -516,16 +517,35 @@ func TestParseGifFormats(t *testing.T) {
 			"1":{"results":[{"media_formats":{"gif":{"url":"https://media.tenor.com/a.gif"}}}]},
 			"2":{"results":[{"media_formats":{"gif":{"url":"https://media.tenor.com/b.gif"}}}]}
 		}}}`
-		if got := parseGifFormats(two, "/view/cat-gif-3"); got != nil {
-			t.Fatalf("got %+v, want nil", got)
+		if got := parseGifStoreCache(two, "/view/cat-gif-3"); got.id != "" || got.formats != nil {
+			t.Fatalf("got %+v, want nothing", got)
 		}
 	})
 
-	t.Run("returns nil for missing or malformed blobs", func(t *testing.T) {
+	t.Run("returns nothing for missing or malformed blobs", func(t *testing.T) {
 		for _, text := range []string{"", "not json", `{}`, `{"gifs":{"byId":{"1":{"results":[]}}}}`} {
-			if got := parseGifFormats(text, "/view/cat-gif-1"); got != nil {
-				t.Fatalf("parseGifFormats(%q) = %+v, want nil", text, got)
+			if got := parseGifStoreCache(text, "/view/cat-gif-1"); got.id != "" || got.formats != nil {
+				t.Fatalf("parseGifStoreCache(%q) = %+v, want nothing", text, got)
 			}
+		}
+	})
+
+	t.Run("related GIFs leave out the GIF itself", func(t *testing.T) {
+		// The slug's ID is stale, so the GIF is only recognisable by the blob's ID
+		got := parseGifStoreCache(`{"gifs":{
+			"byId":{"123":{"results":[{"media_formats":{"gif":{"url":"https://media.tenor.com/cat.gif"}}}]}},
+			"related":{
+				"123":{"next":"r2","results":[
+					{"id":"123","itemurl":"https://tenor.com/view/cat-gif-123","media_formats":{"tinygif":{"url":"https://media.tenor.com/cat.gif"}}},
+					{"id":"4","itemurl":"https://tenor.com/view/dog-gif-4","content_description":"a dog","media_formats":{"tinygif":{"url":"https://media.tenor.com/dog.gif","dims":[10,20]}}}
+				]},
+				"999":{"results":[{"id":"5","itemurl":"https://tenor.com/view/other-gif-5","media_formats":{"tinygif":{"url":"https://media.tenor.com/other.gif"}}}]}
+			}
+		}}`, "/view/cat-gif-999")
+
+		want := []SearchResult{{URL: "/view/dog-gif-4", ImageURL: "https://media.tenor.com/dog.gif", Alt: "a dog", Width: 10, Height: 20}}
+		if got.related.Next != "r2" || !slices.Equal(got.related.Results, want) {
+			t.Fatalf("related = %+v, want %+v with next r2", got.related, want)
 		}
 	})
 }
@@ -573,15 +593,17 @@ const apiGIFs = `{"next":"n2","results":[` +
 	`{"itemurl":"https://tenor.com/view/no-media-gif-2","media_formats":{}},` +
 	`{"itemurl":"","media_formats":{"tinygif":{"url":"https://media.tenor.com/c.gif"}}}]}`
 
-func TestAPISearchAndFeatured(t *testing.T) {
+func TestAPISearchFeaturedAndRelated(t *testing.T) {
 	tests := []struct {
 		name     string
 		call     func() (*SearchResponse, error)
 		wantPath string
 		wantQ    string
+		wantID   string
 	}{
-		{"search", func() (*SearchResponse, error) { return APISearch("funny cats", "p1") }, "/v2/search", "funny cats"},
-		{"featured", func() (*SearchResponse, error) { return APIFeatured("p1") }, "/v2/featured", ""},
+		{"search", func() (*SearchResponse, error) { return APISearch("funny cats", "p1") }, "/v2/search", "funny cats", ""},
+		{"featured", func() (*SearchResponse, error) { return APIFeatured("p1") }, "/v2/featured", "", ""},
+		{"related", func() (*SearchResponse, error) { return APIRelated("123", "p1") }, "/v2/related", "", "123"},
 	}
 
 	for _, tt := range tests {
@@ -597,8 +619,9 @@ func TestAPISearchAndFeatured(t *testing.T) {
 			}
 			u := (*reqs)[0]
 			q := u.Query()
-			if u.Path != tt.wantPath || q.Get("q") != tt.wantQ || q.Has("q") != (tt.wantQ != "") {
-				t.Fatalf("requested %s, want path %s with q=%q", u, tt.wantPath, tt.wantQ)
+			if u.Path != tt.wantPath || q.Get("q") != tt.wantQ || q.Has("q") != (tt.wantQ != "") ||
+				q.Get("id") != tt.wantID || q.Has("id") != (tt.wantID != "") {
+				t.Fatalf("requested %s, want path %s with q=%q and id=%q", u, tt.wantPath, tt.wantQ, tt.wantID)
 			}
 			if q.Get("pos") != "p1" || q.Get("limit") != "30" || q.Get("media_filter") != "tinygif" ||
 				q.Get("contentfilter") != "low" || q.Get("key") != TenorAPIKey || q.Get("client_key") != TenorClientKey {
