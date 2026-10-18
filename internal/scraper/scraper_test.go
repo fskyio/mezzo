@@ -274,3 +274,80 @@ func TestParseStoreCacheRejectsInvalidOrEmptyData(t *testing.T) {
 		}
 	}
 }
+
+func TestParseGifFormats(t *testing.T) {
+	const blob = `{"gifs":{"byId":{"123":{"results":[{"media_formats":{
+		"mediumgif":{"url":"https://media1.tenor.com/m/x/AAAAd/cat.gif"},
+		"gif":{"url":"https://media1.tenor.com/m/x/AAAAC/cat.gif"},
+		"mp4":{"url":"https://media.tenor.com/x/AAAPo/cat.mp4"},
+		"tinygif":{"url":"https://media.tenor.com/x/AAAAM/cat.gif"}
+	}}]}}}}`
+
+	t.Run("maps tenor formats in switcher order", func(t *testing.T) {
+		got := parseGifFormats(blob, "/view/cat-gif-123")
+		want := []GifFormat{
+			{Key: "sd", Label: "SD GIF", URL: "https://media1.tenor.com/m/x/AAAAd/cat.gif"},
+			{Key: "hd", Label: "HD GIF", URL: "https://media1.tenor.com/m/x/AAAAC/cat.gif"},
+			{Key: "mp4", Label: "MP4", URL: "https://media.tenor.com/x/AAAPo/cat.mp4", Video: true},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("got %d formats, want %d: %+v", len(got), len(want), got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("format %d = %+v, want %+v", i, got[i], want[i])
+			}
+		}
+	})
+
+	t.Run("skips formats tenor does not offer", func(t *testing.T) {
+		got := parseGifFormats(`{"gifs":{"byId":{"1":{"results":[{"media_formats":{
+			"mediumgif":{"url":"https://media.tenor.com/sd.gif"},
+			"gif":{"url":""}
+		}}]}}}}`, "/view/cat-gif-1")
+		if len(got) != 1 || got[0].Key != "sd" {
+			t.Fatalf("got %+v, want only the SD GIF", got)
+		}
+	})
+
+	t.Run("falls back to the only entry when the slug id is stale", func(t *testing.T) {
+		if got := parseGifFormats(blob, "/view/cat-gif-999"); len(got) != 3 {
+			t.Fatalf("got %d formats, want 3", len(got))
+		}
+	})
+
+	t.Run("does not guess between several entries", func(t *testing.T) {
+		two := `{"gifs":{"byId":{
+			"1":{"results":[{"media_formats":{"gif":{"url":"https://media.tenor.com/a.gif"}}}]},
+			"2":{"results":[{"media_formats":{"gif":{"url":"https://media.tenor.com/b.gif"}}}]}
+		}}}`
+		if got := parseGifFormats(two, "/view/cat-gif-3"); got != nil {
+			t.Fatalf("got %+v, want nil", got)
+		}
+	})
+
+	t.Run("returns nil for missing or malformed blobs", func(t *testing.T) {
+		for _, text := range []string{"", "not json", `{}`, `{"gifs":{"byId":{"1":{"results":[]}}}}`} {
+			if got := parseGifFormats(text, "/view/cat-gif-1"); got != nil {
+				t.Fatalf("parseGifFormats(%q) = %+v, want nil", text, got)
+			}
+		}
+	})
+}
+
+func TestGifPageFormatFallsBackToDefault(t *testing.T) {
+	page := &GifPage{Formats: []GifFormat{
+		{Key: "sd", URL: "sd.gif"},
+		{Key: "mp4", URL: "cat.mp4", Video: true},
+	}}
+
+	if got := page.Format("mp4"); got.URL != "cat.mp4" {
+		t.Fatalf("Format(mp4) = %+v, want the MP4", got)
+	}
+	// "hd" is a valid key that this page does not offer; "" and junk are invalid.
+	for _, key := range []string{"hd", "", "../etc/passwd"} {
+		if got := page.Format(key); got.URL != "sd.gif" {
+			t.Fatalf("Format(%q) = %+v, want the default SD GIF", key, got)
+		}
+	}
+}

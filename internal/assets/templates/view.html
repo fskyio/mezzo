@@ -1,6 +1,19 @@
 {{define "content"}}
 	<div class="view-page">
-		<img alt="{{.Title}}" src="{{proxy .ImageURL}}" loading="lazy">
+		<div class="view-media">
+			{{if .Media.Video}}
+			<video src="{{proxy .Media.URL}}" aria-label="{{.Title}}" autoplay loop muted playsinline controls></video>
+			{{else}}
+			<img alt="{{.Title}}" src="{{proxy .Media.URL}}" loading="lazy">
+			{{end}}
+			{{if .Formats}}
+			<nav class="tabs" aria-label="Media format">
+				{{range .Formats}}
+				<a class="tab{{if .Active}} selected{{end}}" href="{{.Href}}" data-src="{{.Src}}"{{if .Video}} data-video{{end}}{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>
+				{{end}}
+			</nav>
+			{{end}}
+		</div>
 
 		<div class="metadata">
 			<h1>{{.Title}}</h1>
@@ -63,4 +76,7 @@
 			{{end}}
 		</div>
 	</div>
+	{{if .Formats}}
+	<script src="/static/view.js{{if .Version}}?v={{.Version}}{{end}}" defer></script>
+	{{end}}
 {{end}}

@@ -57,6 +57,7 @@ type SearchResult struct {
 type GifPage struct {
 	Title        string
 	ImageURL     string
+	Formats      []GifFormat
 	Author       string
 	AuthorURL    string
 	AuthorAvatar string
@@ -67,6 +68,36 @@ type GifPage struct {
 	Duration     string
 	Dimensions   string
 	Created      string
+}
+
+// GifFormat is one rendition of a GIF that Tenor offers on its view page.
+type GifFormat struct {
+	Key   string // value of the ?format= query parameter: "sd", "hd" or "mp4"
+	Label string
+	URL   string
+	Video bool
+}
+
+// gifFormatSpecs maps Tenor's media_formats entries onto the SD GIF / HD GIF /
+// MP4 switcher Tenor shows on its view page. The first entry is the default.
+var gifFormatSpecs = []struct {
+	key, label, tenorKey string
+	video                bool
+}{
+	{"sd", "SD GIF", "mediumgif", false},
+	{"hd", "HD GIF", "gif", false},
+	{"mp4", "MP4", "mp4", true},
+}
+
+// Format returns the format with the given key, or the default format when the
+// key is unknown or the page does not offer it.
+func (g *GifPage) Format(key string) GifFormat {
+	for _, f := range g.Formats {
+		if f.Key == key {
+			return f
+		}
+	}
+	return g.Formats[0]
 }
 
 // Proxy generates a proxied URL for a given image URL
@@ -191,9 +222,15 @@ func GetGif(path string) (*GifPage, error) {
 		}
 	})
 
+	formats := parseGifFormats(doc.Find("script#store-cache").Text(), path)
+	if len(formats) == 0 {
+		formats = []GifFormat{{Key: gifFormatSpecs[0].key, Label: gifFormatSpecs[0].label, URL: imageURL}}
+	}
+
 	return &GifPage{
 		Title:        title,
 		ImageURL:     imageURL,
+		Formats:      formats,
 		Author:       author,
 		AuthorURL:    authorURL,
 		AuthorAvatar: authorAvatar,
@@ -205,6 +242,45 @@ func GetGif(path string) (*GifPage, error) {
 		Dimensions:   dimensions,
 		Created:      created,
 	}, nil
+}
+
+// storeCacheGIFPage is the part of the view page's store-cache blob that holds
+// the viewed GIF. It is kept separate from storeCacheData so a shape change
+// here cannot break profile parsing.
+type storeCacheGIFPage struct {
+	GIFs struct {
+		ByID map[string]storeCacheGIFSet `json:"byId"`
+	} `json:"gifs"`
+}
+
+// parseGifFormats extracts the available renditions of the GIF at path from the
+// store-cache JSON blob, in gifFormatSpecs order. It returns nil if the blob is
+// missing, malformed, or does not describe the GIF.
+func parseGifFormats(jsonText, path string) []GifFormat {
+	var data storeCacheGIFPage
+	if err := json.Unmarshal([]byte(jsonText), &data); err != nil {
+		return nil
+	}
+
+	// The GIF ID is the trailing number of the slug: /view/happy-cat-gif-1234
+	set, ok := data.GIFs.ByID[path[strings.LastIndex(path, "-")+1:]]
+	if !ok && len(data.GIFs.ByID) == 1 {
+		// Tenor redirects legacy IDs, so the slug may not match the blob's key
+		for _, only := range data.GIFs.ByID {
+			set, ok = only, true
+		}
+	}
+	if !ok || len(set.Results) == 0 {
+		return nil
+	}
+
+	var formats []GifFormat
+	for _, spec := range gifFormatSpecs {
+		if m, ok := set.Results[0].MediaFormats[spec.tenorKey]; ok && m.URL != "" {
+			formats = append(formats, GifFormat{Key: spec.key, Label: spec.label, URL: m.URL, Video: spec.video})
+		}
+	}
+	return formats
 }
 
 // GetSearch scrapes a Tenor search page for results

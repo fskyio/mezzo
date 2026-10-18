@@ -241,3 +241,30 @@ func TestScrapeStatusCode(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatOptions(t *testing.T) {
+	formats := []scraper.GifFormat{
+		{Key: "sd", Label: "SD GIF", URL: "https://media1.tenor.com/sd.gif"},
+		{Key: "hd", Label: "HD GIF", URL: "https://media1.tenor.com/hd.gif"},
+		{Key: "mp4", Label: "MP4", URL: "https://media.tenor.com/cat.mp4", Video: true},
+	}
+
+	if got := formatOptions("/view/cat-gif-1", formats[:1], "sd"); got != nil {
+		t.Fatalf("single format produced a switcher: %+v", got)
+	}
+
+	got := formatOptions("/en-us/view/cat%20gif-1", formats, "hd")
+	want := []FormatOption{
+		{Label: "SD GIF", Href: "/en-us/view/cat%20gif-1", Src: scraper.Proxy(formats[0].URL)},
+		{Label: "HD GIF", Href: "/en-us/view/cat%20gif-1?format=hd", Src: scraper.Proxy(formats[1].URL), Active: true},
+		{Label: "MP4", Href: "/en-us/view/cat%20gif-1?format=mp4", Src: scraper.Proxy(formats[2].URL), Video: true},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d options, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("option %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}

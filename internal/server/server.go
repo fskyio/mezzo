@@ -68,7 +68,8 @@ type BasePage struct {
 // ViewPage contains template data for the GIF view page
 type ViewPage struct {
 	BasePage
-	ImageURL        string
+	Media           scraper.GifFormat
+	Formats         []FormatOption
 	Author          string
 	AuthorURL       string
 	AuthorAvatar    string
@@ -80,6 +81,15 @@ type ViewPage struct {
 	Duration        string
 	Dimensions      string
 	Created         string
+}
+
+// FormatOption is one tab in the SD GIF / HD GIF / MP4 switcher
+type FormatOption struct {
+	Label  string
+	Href   string
+	Src    string // proxied media URL, used by view.js to swap media in place
+	Video  bool
+	Active bool
 }
 
 // SearchPage contains template data for the search results page
@@ -307,6 +317,8 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	media := gifPage.Format(r.URL.Query().Get("format"))
+
 	w.Header().Set("Mezzo-Cache", cacheStatus)
 
 	data := ViewPage{
@@ -318,7 +330,8 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 			Host:       r.Host,
 			Scheme:     scheme,
 		},
-		ImageURL:        gifPage.ImageURL,
+		Media:           media,
+		Formats:         formatOptions(r.URL.EscapedPath(), gifPage.Formats, media.Key),
 		Author:          gifPage.Author,
 		AuthorURL:       gifPage.AuthorURL,
 		AuthorAvatar:    gifPage.AuthorAvatar,
@@ -333,6 +346,31 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, "view.html", data)
+}
+
+// formatOptions builds the format switcher links for the view page at viewPath.
+// It returns nil when there is nothing to switch between.
+func formatOptions(viewPath string, formats []scraper.GifFormat, active string) []FormatOption {
+	if len(formats) < 2 {
+		return nil
+	}
+
+	options := make([]FormatOption, 0, len(formats))
+	for i, f := range formats {
+		href := viewPath
+		if i > 0 {
+			// The first format is the default, so its link stays query-free
+			href += "?format=" + f.Key
+		}
+		options = append(options, FormatOption{
+			Label:  f.Label,
+			Href:   href,
+			Src:    scraper.Proxy(f.URL),
+			Video:  f.Video,
+			Active: f.Key == active,
+		})
+	}
+	return options
 }
 
 func (s *Server) handleSearchRedirect(w http.ResponseWriter, r *http.Request) {
@@ -562,7 +600,18 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := client.Default.Get(targetURL)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL, nil)
+	if err != nil {
+		s.handleError(w, r, http.StatusBadRequest)
+		return
+	}
+	// Browsers need range support to play and seek <video>; Safari refuses to
+	// play video from a server that ignores Range.
+	if rng := r.Header.Get("Range"); rng != "" {
+		req.Header.Set("Range", rng)
+	}
+
+	resp, err := client.Default.Do(req)
 	if err != nil {
 		slog.Error("failed to fetch proxy URL", "error", err)
 		s.handleError(w, r, http.StatusBadGateway)
@@ -570,7 +619,11 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
 	w.Header().Set("Cache-Control", CacheControl)
 	if filename := path.Base(targetURL); filename != "" && filename != "." {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
