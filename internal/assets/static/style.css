@@ -223,6 +223,15 @@ pre code {
 	border-radius: 10px;
 }
 
+.view-controls {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: center;
+	gap: 0.5rem;
+	max-width: 100%;
+}
+
 .tabs {
 	display: inline-flex;
 	gap: 2px;
@@ -255,6 +264,92 @@ pre code {
 	background: var(--button-bg);
 	color: var(--main);
 	box-shadow: inset 0 0.1rem 0 var(--button-top-shadow), inset 0 -0.1rem 0 var(--button-bottom-shadow);
+}
+
+.download-menu {
+	position: relative;
+}
+
+.download-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 8px 16px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--button-bg);
+	color: var(--button);
+	text-decoration: none;
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+	box-shadow: inset 0 0.1rem 0 var(--button-top-shadow), inset 0 -0.1rem 0 var(--button-bottom-shadow);
+	transition: background-color 0.2s, transform 0.2s;
+}
+
+.download-button::-webkit-details-marker {
+	display: none;
+}
+
+.download-button:hover {
+	background: var(--button-bg-hover);
+}
+
+.download-button:active {
+	transform: scale(0.94);
+}
+
+.download-menu summary::after {
+	content: "";
+	width: 0.4em;
+	height: 0.4em;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-0.15em) rotate(45deg);
+	transition: transform 0.2s;
+}
+
+.download-menu[open] summary::after {
+	transform: translateY(0.1em) rotate(-135deg);
+}
+
+.download-menu ul {
+	position: absolute;
+	z-index: 10;
+	top: calc(100% + 0.35rem);
+	right: 0;
+	min-width: 100%;
+	margin: 0;
+	padding: 4px;
+	list-style: none;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+	transform-origin: top right;
+}
+
+.download-menu li a {
+	display: block;
+	padding: 6px 14px;
+	border-radius: 8px;
+	color: var(--main);
+	text-decoration: none;
+	white-space: nowrap;
+	transition: background-color 0.15s;
+}
+
+.download-menu li a:hover,
+.download-menu li a:focus-visible {
+	background: var(--surface-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.download-button,
+	.download-menu summary::after,
+	.download-menu li a {
+		transition: none;
+	}
 }
 
 .error-page {

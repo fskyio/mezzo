@@ -30,6 +30,7 @@ import (
 	"mezzo/internal/client"
 	"mezzo/internal/config"
 	"mezzo/internal/scraper"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -81,6 +82,13 @@ type ViewPage struct {
 	Duration        string
 	Dimensions      string
 	Created         string
+	Downloads       []DownloadOption
+}
+
+// DownloadOption is one entry in the download menu on the view page
+type DownloadOption struct {
+	Label string
+	Href  string // proxied URL that responds with Content-Disposition: attachment
 }
 
 // FormatOption is one tab in the SD GIF / HD GIF / MP4 switcher
@@ -343,6 +351,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		Duration:        gifPage.Duration,
 		Dimensions:      gifPage.Dimensions,
 		Created:         gifPage.Created,
+		Downloads:       downloadOptions(r.URL.EscapedPath(), gifPage.Formats),
 	}
 
 	s.render(w, "view.html", data)
@@ -369,6 +378,26 @@ func formatOptions(viewPath string, formats []scraper.GifFormat, active string) 
 			Video:  f.Video,
 			Active: f.Key == active,
 		})
+	}
+	return options
+}
+
+// downloadOptions builds the download links for the view page at viewPath,
+// one per available format.
+func downloadOptions(viewPath string, formats []scraper.GifFormat) []DownloadOption {
+	slug := path.Base(viewPath)
+	if unescaped, err := url.PathUnescape(slug); err == nil {
+		slug = unescaped
+	}
+
+	options := make([]DownloadOption, 0, len(formats))
+	for _, f := range formats {
+		stem := slug
+		if !f.Video {
+			// SD and HD GIFs share a file name on Tenor's servers
+			stem += "-" + f.Key
+		}
+		options = append(options, DownloadOption{Label: f.Label, Href: scraper.ProxyDownload(f.URL, stem)})
 	}
 	return options
 }
@@ -625,8 +654,21 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Cache-Control", CacheControl)
-	if filename := path.Base(targetURL); filename != "" && filename != "." {
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
+	disposition := "inline"
+	filename := path.Base(targetURL)
+	if q := r.URL.Query(); q.Has("download") {
+		disposition = "attachment"
+		// The extension always comes from the Tenor URL so a link cannot
+		// change the type of the saved file
+		if stem := q.Get("download"); stem != "" {
+			filename = path.Base(stem) + path.Ext(req.URL.Path)
+		}
+	}
+	if filename != "" && filename != "." {
+		// FormatMediaType quotes and escapes the name
+		if v := mime.FormatMediaType(disposition, map[string]string{"filename": filename}); v != "" {
+			w.Header().Set("Content-Disposition", v)
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {

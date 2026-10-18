@@ -6,12 +6,28 @@
 			{{else}}
 			<img alt="{{.Title}}" src="{{proxy .Media.URL}}" loading="lazy">
 			{{end}}
-			{{if .Formats}}
-			<nav class="tabs" aria-label="Media format">
-				{{range .Formats}}
-				<a class="tab{{if .Active}} selected{{end}}" href="{{.Href}}" data-src="{{.Src}}"{{if .Video}} data-video{{end}}{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>
+			{{if or .Formats .Downloads}}
+			<div class="view-controls">
+				{{if .Formats}}
+				<nav class="tabs" aria-label="Media format">
+					{{range .Formats}}
+					<a class="tab{{if .Active}} selected{{end}}" href="{{.Href}}" data-src="{{.Src}}"{{if .Video}} data-video{{end}}{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>
+					{{end}}
+				</nav>
 				{{end}}
-			</nav>
+				{{if eq (len .Downloads) 1}}
+				<a class="download-button" href="{{(index .Downloads 0).Href}}" download>Download</a>
+				{{else if .Downloads}}
+				<details class="download-menu">
+					<summary class="download-button">Download</summary>
+					<ul>
+						{{range .Downloads}}
+						<li><a href="{{.Href}}" download>{{.Label}}</a></li>
+						{{end}}
+					</ul>
+				</details>
+				{{end}}
+			</div>
 			{{end}}
 		</div>
 

@@ -108,6 +108,16 @@ func Proxy(imageURL string) string {
 	return fmt.Sprintf("/proxy.gif?url=%s", url.QueryEscape(imageURL))
 }
 
+// ProxyDownload generates a proxied URL that makes the browser save the media
+// instead of displaying it. stem is the file name without extension; the
+// proxy takes the extension from imageURL.
+func ProxyDownload(imageURL, stem string) string {
+	if imageURL == "" {
+		return ""
+	}
+	return fmt.Sprintf("/proxy.gif?url=%s&download=%s", url.QueryEscape(imageURL), url.QueryEscape(stem))
+}
+
 func isTenorMedia(src string) bool {
 	return strings.Contains(src, "media.tenor.com") || strings.Contains(src, "media1.tenor.com") || strings.Contains(src, "c.tenor.com")
 }

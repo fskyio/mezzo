@@ -1,11 +1,16 @@
 /*
- * Optional enhancement for the SD GIF / HD GIF / MP4 tabs on the view page.
+ * Optional enhancements for the view page.
  *
- * Without this script the tabs are plain links to ?format=... and every switch
- * is a full page load. With it, the media is swapped in place. That matters for
- * MP4: the click is a user gesture, so play() is allowed even in browsers that
- * refuse to autoplay on a fresh page load (for example iOS Low Power Mode, or
- * Firefox/Safari set to block autoplay).
+ * Format tabs: without this script the SD GIF / HD GIF / MP4 tabs are plain
+ * links to ?format=... and every switch is a full page load. With it, the media
+ * is swapped in place. That matters for MP4: the click is a user gesture, so
+ * play() is allowed even in browsers that refuse to autoplay on a fresh page
+ * load (for example iOS Low Power Mode, or Firefox/Safari set to block
+ * autoplay).
+ *
+ * Download menu: the <details> dropdown works on its own. With this script it
+ * also closes on outside click, Escape, or after picking a format (a download
+ * does not navigate, so the menu would otherwise stay open).
  */
 (function () {
 	"use strict";
@@ -110,6 +115,34 @@
 		event.preventDefault();
 		if (!tab.classList.contains("selected")) {
 			select(tab);
+		}
+	});
+})();
+
+(function () {
+	"use strict";
+
+	var menu = document.querySelector(".download-menu");
+	if (!menu) {
+		return;
+	}
+
+	document.addEventListener("click", function (event) {
+		if (menu.open && !menu.contains(event.target)) {
+			menu.open = false;
+		}
+	});
+
+	menu.addEventListener("click", function (event) {
+		if (event.target.closest("li a")) {
+			menu.open = false;
+		}
+	});
+
+	menu.addEventListener("keydown", function (event) {
+		if (event.key === "Escape" && menu.open) {
+			menu.open = false;
+			menu.querySelector("summary").focus();
 		}
 	});
 })();

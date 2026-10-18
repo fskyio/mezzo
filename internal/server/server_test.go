@@ -21,10 +21,15 @@ package server
 
 import (
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
+	"mezzo/internal/client"
 	"mezzo/internal/scraper"
 )
 
@@ -267,4 +272,100 @@ func TestFormatOptions(t *testing.T) {
 			t.Fatalf("option %d = %+v, want %+v", i, got[i], want[i])
 		}
 	}
+}
+
+func TestDownloadOptions(t *testing.T) {
+	formats := []scraper.GifFormat{
+		{Key: "sd", Label: "SD GIF", URL: "https://media1.tenor.com/m/x/AAAAd/cat.gif"},
+		{Key: "hd", Label: "HD GIF", URL: "https://media1.tenor.com/m/x/AAAAC/cat.gif"},
+		{Key: "mp4", Label: "MP4", URL: "https://media.tenor.com/x/AAAPo/cat.mp4", Video: true},
+	}
+
+	got := downloadOptions("/en-us/view/cat%20gif-1", formats)
+	want := []struct{ label, url, download string }{
+		{"SD GIF", formats[0].URL, "cat gif-1-sd"},
+		{"HD GIF", formats[1].URL, "cat gif-1-hd"},
+		{"MP4", formats[2].URL, "cat gif-1"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d options, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		u, err := url.Parse(got[i].Href)
+		if err != nil {
+			t.Fatalf("option %d href %q: %v", i, got[i].Href, err)
+		}
+		if got[i].Label != w.label || u.Path != "/proxy.gif" ||
+			u.Query().Get("url") != w.url || u.Query().Get("download") != w.download {
+			t.Fatalf("option %d = %+v, want label %q url %q download %q", i, got[i], w.label, w.url, w.download)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestHandleProxyContentDisposition(t *testing.T) {
+	orig := client.Default.Transport
+	client.Default.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"image/gif"}},
+			Body:       io.NopCloser(strings.NewReader("GIF89a")),
+			Request:    r,
+		}, nil
+	})
+	t.Cleanup(func() { client.Default.Transport = orig })
+
+	const media = "https://media1.tenor.com/m/x/AAAAC/cat.gif"
+	tests := []struct {
+		name         string
+		query        string
+		wantType     string
+		wantFilename string
+	}{
+		{"displayed by default", "url=" + url.QueryEscape(media), "inline", "cat.gif"},
+		{"download stem gets the media extension", "url=" + url.QueryEscape(media) + "&download=cat-hd", "attachment", "cat-hd.gif"},
+		{"empty download keeps the media name", "url=" + url.QueryEscape(media) + "&download=", "attachment", "cat.gif"},
+		{"download cannot choose the extension", "url=" + url.QueryEscape(media) + "&download=run.exe", "attachment", "run.exe.gif"},
+		{"download cannot choose a directory", "url=" + url.QueryEscape(media) + "&download=" + url.QueryEscape("../../etc/cat"), "attachment", "cat.gif"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/proxy.gif?"+tt.query, nil)
+			(&Server{}).handleProxy(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			gotType, params, err := mime.ParseMediaType(rec.Header().Get("Content-Disposition"))
+			if err != nil {
+				t.Fatalf("Content-Disposition %q: %v", rec.Header().Get("Content-Disposition"), err)
+			}
+			if gotType != tt.wantType || params["filename"] != tt.wantFilename {
+				t.Fatalf("Content-Disposition = %s %q, want %s %q", gotType, params["filename"], tt.wantType, tt.wantFilename)
+			}
+		})
+	}
+
+	t.Run("download name cannot inject headers", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		stem := "a\"\r\nX-Evil: 1"
+		req := httptest.NewRequest(http.MethodGet, "/proxy.gif?url="+url.QueryEscape(media)+"&download="+url.QueryEscape(stem), nil)
+		(&Server{}).handleProxy(rec, req)
+
+		if v := rec.Header().Get("X-Evil"); v != "" {
+			t.Fatalf("injected header X-Evil = %q", v)
+		}
+		_, params, err := mime.ParseMediaType(rec.Header().Get("Content-Disposition"))
+		if err != nil {
+			t.Fatalf("Content-Disposition %q: %v", rec.Header().Get("Content-Disposition"), err)
+		}
+		if want := stem + ".gif"; params["filename"] != want {
+			t.Fatalf("filename = %q, want %q", params["filename"], want)
+		}
+	})
 }
