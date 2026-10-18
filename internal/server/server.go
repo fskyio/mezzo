@@ -45,14 +45,16 @@ const (
 
 // Server wires routes, templates, and the asset filesystem
 type Server struct {
-	router       *http.ServeMux
-	templates    map[string]*template.Template
-	patchesURL   string
-	assets       fs.FS
-	version      string
-	gifCache     *cache.Cache[*scraper.GifPage]
-	searchCache  *cache.Cache[*scraper.SearchResponse]
-	profileCache *cache.Cache[*scraper.ProfilePage]
+	router        *http.ServeMux
+	templates     map[string]*template.Template
+	patchesURL    string
+	assets        fs.FS
+	version       string
+	gifCache      *cache.Cache[*scraper.GifPage]
+	searchCache   *cache.Cache[*scraper.SearchResponse]
+	profileCache  *cache.Cache[*scraper.ProfilePage]
+	exploreCache  *cache.Cache[*scraper.SearchResponse]
+	trendingCache *cache.Cache[[]scraper.Trend]
 }
 
 // BasePage contains template data shared by all pages
@@ -108,6 +110,15 @@ type SearchPage struct {
 	PrevURL string
 }
 
+// ExplorePage contains template data for the explore page
+type ExplorePage struct {
+	BasePage
+	Trends  []scraper.Trend
+	Results []scraper.SearchResult
+	NextURL string
+	PrevURL string
+}
+
 // ErrorPage contains template data for error pages
 type ErrorPage struct {
 	BasePage
@@ -145,12 +156,16 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 		s.gifCache = cache.New[*scraper.GifPage](cfg.CacheGifTTL, cfg.CacheGifMax)
 		s.searchCache = cache.New[*scraper.SearchResponse](cfg.CacheSearchTTL, cfg.CacheSearchMax)
 		s.profileCache = cache.New[*scraper.ProfilePage](cfg.CacheProfileTTL, cfg.CacheProfileMax)
+		s.exploreCache = cache.New[*scraper.SearchResponse](cfg.CacheSearchTTL, cfg.CacheSearchMax)
+		// There is only one trending list, so one slot is enough
+		s.trendingCache = cache.New[[]scraper.Trend](cfg.CacheSearchTTL, 1)
 	}
 
 	funcMap := template.FuncMap{
 		"proxy": func(u string) string {
 			return scraper.Proxy(u)
 		},
+		"searchPath": searchPath,
 		"formatDate": func(s string) string {
 			t, err := time.Parse(time.RFC3339, s)
 			if err != nil {
@@ -167,7 +182,7 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 	}
 
 	// Parse each page template on top of the base template
-	pages := []string{"index.html", "view.html", "search.html", "error.html", "profile.html"}
+	pages := []string{"index.html", "view.html", "search.html", "explore.html", "error.html", "profile.html"}
 	for _, page := range pages {
 		tmpl, err := baseTmpl.Clone()
 		if err != nil {
@@ -218,6 +233,7 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /view/{slug...}", s.handleView)
 	s.router.HandleFunc("GET /search", s.handleSearchRedirect)
 	s.router.HandleFunc("GET /search/{slug...}", s.handleSearch)
+	s.router.HandleFunc("GET /explore", s.handleExplore)
 	s.router.HandleFunc("GET /users/{username}", s.handleProfile)
 	s.router.HandleFunc("GET /official/{username}", s.handleProfile)
 	s.router.HandleFunc("GET /proxy.gif", s.handleProxy)
@@ -257,6 +273,10 @@ func (s *Server) handleCatchAll(w http.ResponseWriter, r *http.Request) {
 				} else {
 					s.handleSearchRedirect(w, r)
 				}
+				return
+			}
+			if action == "explore" {
+				s.handleExplore(w, r)
 				return
 			}
 			if action == "users" || action == "official" {
@@ -414,8 +434,7 @@ func (s *Server) handleSearchRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slug := strings.ReplaceAll(q, " ", "-") + "-gifs"
-	http.Redirect(w, r, "/search/"+slug, http.StatusFound)
+	http.Redirect(w, r, searchPath(q), http.StatusFound)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -476,26 +495,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Mezzo-Cache", cacheStatus)
 
-	// Build the next page URL, carrying the current pos as prev
-	var nextURL string
-	if searchResp.Next != "" {
-		nextURL = path + "?pos=" + url.QueryEscape(searchResp.Next)
-		if pos != "" {
-			nextURL += "&prev=" + url.QueryEscape(pos)
-		}
-	}
-
-	// Build the previous page URL
-	var prevURL string
-	if pos != "" {
-		if prev != "" {
-			// Go back to the previous cursor position
-			prevURL = path + "?pos=" + url.QueryEscape(prev)
-		} else {
-			// We're on page 2, previous is page 1 (no pos param)
-			prevURL = path
-		}
-	}
+	prevURL, nextURL := pageLinks(path, pos, prev, searchResp.Next)
 
 	data := SearchPage{
 		BasePage: BasePage{
@@ -511,6 +511,126 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, "search.html", data)
+}
+
+func (s *Server) handleExplore(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	pos := r.URL.Query().Get("pos")
+	prev := r.URL.Query().Get("prev")
+
+	base := BasePage{
+		Title:      "Explore",
+		PatchesURL: s.patchesURL,
+		Version:    s.version,
+		Host:       r.Host,
+	}
+
+	cacheStatus := "MISS"
+	var featured *scraper.SearchResponse
+
+	if s.exploreCache != nil {
+		if cached, ok := s.exploreCache.Get(pos); ok {
+			featured = cached
+			cacheStatus = "HIT"
+		}
+	}
+
+	if featured == nil {
+		var err error
+		featured, err = scraper.APIFeatured(pos)
+		if err != nil {
+			slog.Warn("tenor API failed for featured GIFs", "error", err)
+			if pos != "" {
+				s.handleError(w, r, http.StatusBadGateway)
+				return
+			}
+			// Fall back to scraping Tenor's homepage (first page only, no
+			// pagination, no trending searches)
+			results, scrapeErr := scraper.GetSearch("/")
+			if scrapeErr != nil {
+				slog.Error("HTML scraping fallback also failed", "error", scrapeErr)
+				s.handleError(w, r, scrapeStatusCode(scrapeErr))
+				return
+			}
+			w.Header().Set("Mezzo-Cache", "BYPASS")
+			s.render(w, "explore.html", ExplorePage{BasePage: base, Results: results})
+			return
+		}
+
+		if s.exploreCache != nil {
+			s.exploreCache.Set(pos, featured)
+		}
+	}
+
+	w.Header().Set("Mezzo-Cache", cacheStatus)
+
+	// Trending searches only appear above the first page of featured GIFs
+	var trends []scraper.Trend
+	if pos == "" {
+		trends = s.trending()
+	}
+
+	prevURL, nextURL := pageLinks(path, pos, prev, featured.Next)
+	s.render(w, "explore.html", ExplorePage{
+		BasePage: base,
+		Trends:   trends,
+		Results:  featured.Results,
+		NextURL:  nextURL,
+		PrevURL:  prevURL,
+	})
+}
+
+// trending returns Tenor's trending searches. A failure is logged and yields
+// nil so the featured GIFs still render.
+func (s *Server) trending() []scraper.Trend {
+	const key = "trending"
+
+	if s.trendingCache != nil {
+		if cached, ok := s.trendingCache.Get(key); ok {
+			return cached
+		}
+	}
+
+	trends, err := scraper.APITrending()
+	if err != nil {
+		slog.Warn("tenor API failed for trending searches", "error", err)
+		return nil
+	}
+
+	if s.trendingCache != nil {
+		s.trendingCache.Set(key, trends)
+	}
+	return trends
+}
+
+// pageLinks returns the Previous and Next links for a page of cursor-paginated
+// results at path. pos is the cursor of the current page and prev the cursor of
+// the page before it (both empty on the first page); next is the cursor of the
+// following page, empty on the last page. An empty return value means no link.
+func pageLinks(path, pos, prev, next string) (prevURL, nextURL string) {
+	// Carry the current pos as prev so the next page can link back to it
+	if next != "" {
+		nextURL = path + "?pos=" + url.QueryEscape(next)
+		if pos != "" {
+			nextURL += "&prev=" + url.QueryEscape(pos)
+		}
+	}
+
+	if pos != "" {
+		if prev != "" {
+			// Go back to the previous cursor position
+			prevURL = path + "?pos=" + url.QueryEscape(prev)
+		} else {
+			// We're on page 2, previous is page 1 (no pos param)
+			prevURL = path
+		}
+	}
+	return prevURL, nextURL
+}
+
+// searchPath returns the path of the search page for a search term.
+func searchPath(term string) string {
+	return "/search/" + url.PathEscape(strings.ReplaceAll(term, " ", "-")+"-gifs")
 }
 
 func queryFromSearchPath(path string) string {

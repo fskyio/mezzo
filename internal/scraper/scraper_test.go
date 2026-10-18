@@ -19,7 +19,15 @@
 
 package scraper
 
-import "testing"
+import (
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+
+	"mezzo/internal/client"
+)
 
 func TestProxy(t *testing.T) {
 	if got := Proxy(""); got != "" {
@@ -349,5 +357,107 @@ func TestGifPageFormatFallsBackToDefault(t *testing.T) {
 		if got := page.Format(key); got.URL != "sd.gif" {
 			t.Fatalf("Format(%q) = %+v, want the default SD GIF", key, got)
 		}
+	}
+}
+
+// stubAPI answers every Tenor request with body and returns the URLs requested.
+func stubAPI(t *testing.T, body string) *[]*url.URL {
+	t.Helper()
+	var got []*url.URL
+	orig := client.Default.Transport
+	client.Default.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		got = append(got, r.URL)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    r,
+		}, nil
+	})
+	t.Cleanup(func() { client.Default.Transport = orig })
+	return &got
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+const apiGIFs = `{"next":"n2","results":[` +
+	`{"itemurl":"https://tenor.com/view/a-gif-1","content_description":"a","media_formats":{"tinygif":{"url":"https://media.tenor.com/a.gif","dims":[10,20]}}},` +
+	`{"itemurl":"https://tenor.com/view/no-media-gif-2","media_formats":{}},` +
+	`{"itemurl":"","media_formats":{"tinygif":{"url":"https://media.tenor.com/c.gif"}}}]}`
+
+func TestAPISearchAndFeatured(t *testing.T) {
+	tests := []struct {
+		name     string
+		call     func() (*SearchResponse, error)
+		wantPath string
+		wantQ    string
+	}{
+		{"search", func() (*SearchResponse, error) { return APISearch("funny cats", "p1") }, "/v2/search", "funny cats"},
+		{"featured", func() (*SearchResponse, error) { return APIFeatured("p1") }, "/v2/featured", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reqs := stubAPI(t, apiGIFs)
+			resp, err := tt.call()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(*reqs) != 1 {
+				t.Fatalf("made %d requests, want 1", len(*reqs))
+			}
+			u := (*reqs)[0]
+			q := u.Query()
+			if u.Path != tt.wantPath || q.Get("q") != tt.wantQ || q.Has("q") != (tt.wantQ != "") {
+				t.Fatalf("requested %s, want path %s with q=%q", u, tt.wantPath, tt.wantQ)
+			}
+			if q.Get("pos") != "p1" || q.Get("limit") != "30" || q.Get("media_filter") != "tinygif" ||
+				q.Get("contentfilter") != "low" || q.Get("key") != TenorAPIKey || q.Get("client_key") != TenorClientKey {
+				t.Fatalf("unexpected query %s", u.RawQuery)
+			}
+
+			if resp.Next != "n2" {
+				t.Fatalf("Next = %q, want n2", resp.Next)
+			}
+			// Results without media or a view link cannot be rendered
+			want := SearchResult{URL: "/view/a-gif-1", ImageURL: "https://media.tenor.com/a.gif", Alt: "a", Width: 10, Height: 20}
+			if len(resp.Results) != 1 || resp.Results[0] != want {
+				t.Fatalf("Results = %+v, want [%+v]", resp.Results, want)
+			}
+		})
+	}
+}
+
+func TestAPIFeaturedFirstPageSendsNoCursor(t *testing.T) {
+	reqs := stubAPI(t, apiGIFs)
+	if _, err := APIFeatured(""); err != nil {
+		t.Fatal(err)
+	}
+	if (*reqs)[0].Query().Has("pos") {
+		t.Fatalf("first page sent a cursor: %s", (*reqs)[0].RawQuery)
+	}
+}
+
+func TestAPITrending(t *testing.T) {
+	reqs := stubAPI(t, `{"tags":[`+
+		`{"searchterm":"good night","image":"https://media.tenor.com/a.gif"},`+
+		`{"searchterm":"","image":"https://media.tenor.com/b.gif"},`+
+		`{"searchterm":"no image"}]}`)
+
+	trends, err := APITrending()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	u := (*reqs)[0]
+	if u.Path != "/v2/categories" || u.Query().Get("type") != "trending" {
+		t.Fatalf("requested %s, want /v2/categories?type=trending", u)
+	}
+
+	want := []Trend{{Term: "good night", ImageURL: "https://media.tenor.com/a.gif"}, {Term: "no image"}}
+	if len(trends) != len(want) || trends[0] != want[0] || trends[1] != want[1] {
+		t.Fatalf("trends = %+v, want %+v", trends, want)
 	}
 }

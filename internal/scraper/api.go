@@ -71,37 +71,71 @@ type SearchResponse struct {
 	Next    string
 }
 
+// Trend is one of Tenor's trending searches, as shown in the carousel on
+// Tenor's homepage.
+type Trend struct {
+	Term     string // human-readable search term, e.g. "good night"
+	ImageURL string // preview GIF for the term; may be empty
+}
+
+// apiCategoriesResponse represents the JSON response from the Tenor v2
+// categories API.
+type apiCategoriesResponse struct {
+	Tags []struct {
+		SearchTerm string `json:"searchterm"`
+		Image      string `json:"image"`
+	} `json:"tags"`
+}
+
 // APISearch calls the Tenor v2 API to search for GIFs with pagination support.
 // The query parameter is the search term (human-readable, e.g. "funny cats").
 // The pos parameter is the pagination cursor (empty string for the first page).
 func APISearch(query string, pos string) (*SearchResponse, error) {
 	params := url.Values{}
 	params.Set("q", query)
-	params.Set("key", TenorAPIKey)
-	params.Set("client_key", TenorClientKey)
+	return apiList("/search", params, pos)
+}
+
+// APIFeatured calls the Tenor v2 API for the featured GIFs shown on Tenor's
+// homepage. It paginates the same way as APISearch.
+func APIFeatured(pos string) (*SearchResponse, error) {
+	return apiList("/featured", url.Values{}, pos)
+}
+
+// APITrending calls the Tenor v2 API for the trending searches shown on
+// Tenor's homepage.
+func APITrending() ([]Trend, error) {
+	params := url.Values{}
+	params.Set("type", "trending")
+
+	var apiResp apiCategoriesResponse
+	if err := apiGet("/categories", params, &apiResp); err != nil {
+		return nil, err
+	}
+
+	var trends []Trend
+	for _, tag := range apiResp.Tags {
+		if tag.SearchTerm == "" {
+			continue
+		}
+		trends = append(trends, Trend{Term: tag.SearchTerm, ImageURL: tag.Image})
+	}
+	return trends, nil
+}
+
+// apiList calls a paginated Tenor v2 endpoint that returns GIF results
+// ("search" and "featured") and converts them to SearchResults.
+func apiList(endpoint string, params url.Values, pos string) (*SearchResponse, error) {
 	params.Set("limit", fmt.Sprintf("%d", SearchLimit))
 	params.Set("media_filter", "tinygif")
-	params.Set("contentfilter", "low")
 
 	if pos != "" {
 		params.Set("pos", pos)
 	}
 
-	apiURL := TenorAPIURL + "/search?" + params.Encode()
-
-	resp, err := client.Default.Get(apiURL)
-	if err != nil {
-		return nil, fmt.Errorf("tenor API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("tenor API returned status %d", resp.StatusCode)
-	}
-
 	var apiResp apiSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, fmt.Errorf("failed to decode tenor API response: %w", err)
+	if err := apiGet(endpoint, params, &apiResp); err != nil {
+		return nil, err
 	}
 
 	var results []SearchResult
@@ -141,4 +175,27 @@ func APISearch(query string, pos string) (*SearchResponse, error) {
 		Results: results,
 		Next:    apiResp.Next,
 	}, nil
+}
+
+// apiGet calls a Tenor v2 endpoint with the credentials every request needs
+// and decodes the JSON response into out.
+func apiGet(endpoint string, params url.Values, out any) error {
+	params.Set("key", TenorAPIKey)
+	params.Set("client_key", TenorClientKey)
+	params.Set("contentfilter", "low")
+
+	resp, err := client.Default.Get(TenorAPIURL + endpoint + "?" + params.Encode())
+	if err != nil {
+		return fmt.Errorf("tenor API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("tenor API returned status %d", resp.StatusCode)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("failed to decode tenor API response: %w", err)
+	}
+	return nil
 }

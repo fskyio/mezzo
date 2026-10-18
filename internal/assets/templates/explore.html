@@ -1,0 +1,27 @@
+{{define "content"}}
+	<h1>Explore</h1>
+	{{if .Trends}}
+	<section class="trends" aria-labelledby="trends-heading">
+		<h2 id="trends-heading">Trending searches</h2>
+		<ul>
+			{{range .Trends}}
+			<li><a href="{{searchPath .Term}}">{{if .ImageURL}}<img src="{{proxy .ImageURL}}" loading="lazy" alt="" width="32" height="32">{{end}}<span>{{.Term}}</span></a></li>
+			{{end}}
+		</ul>
+	</section>
+	{{end}}
+	<h2>Featured GIFs</h2>
+	<div class="search-results" role="region" aria-label="Featured GIFs">
+		{{range .Results}}
+		<a href="{{.URL}}">
+			<img src="{{proxy .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+		</a>
+		{{end}}
+	</div>
+	{{if or .PrevURL .NextURL}}
+	<nav class="pagination" aria-label="Featured GIFs pagination">
+		{{if .PrevURL}}<a class="button secondary" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
+		{{if .NextURL}}<a class="button primary" href="{{.NextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
+	</nav>
+	{{end}}
+{{end}}

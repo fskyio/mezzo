@@ -29,7 +29,9 @@ import (
 	"strings"
 	"testing"
 
+	"mezzo/internal/assets"
 	"mezzo/internal/client"
+	"mezzo/internal/config"
 	"mezzo/internal/scraper"
 )
 
@@ -368,4 +370,175 @@ func TestHandleProxyContentDisposition(t *testing.T) {
 			t.Fatalf("filename = %q, want %q", params["filename"], want)
 		}
 	})
+}
+
+func TestPageLinks(t *testing.T) {
+	tests := []struct {
+		name               string
+		pos, prev, next    string
+		wantPrev, wantNext string
+	}{
+		{name: "first page", next: "b", wantNext: "/p?pos=b"},
+		{name: "second page", pos: "b", next: "c", wantPrev: "/p", wantNext: "/p?pos=c&prev=b"},
+		{name: "third page", pos: "c", prev: "b", next: "d", wantPrev: "/p?pos=b", wantNext: "/p?pos=d&prev=c"},
+		{name: "last page", pos: "c", prev: "b", wantPrev: "/p?pos=b"},
+		{name: "only page"},
+		{name: "cursor is escaped", pos: "1.5", next: "a&b=c", wantPrev: "/p", wantNext: "/p?pos=a%26b%3Dc&prev=1.5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPrev, gotNext := pageLinks("/p", tt.pos, tt.prev, tt.next)
+			if gotPrev != tt.wantPrev || gotNext != tt.wantNext {
+				t.Fatalf("pageLinks = (%q, %q), want (%q, %q)", gotPrev, gotNext, tt.wantPrev, tt.wantNext)
+			}
+		})
+	}
+}
+
+func TestSearchPathRoundTrips(t *testing.T) {
+	for _, term := range []string{"good night", "what? #1", "100% real", "café"} {
+		p := searchPath(term)
+		got := queryFromSearchPath(httptest.NewRequest(http.MethodGet, p, nil).URL.Path)
+		if got != term {
+			t.Fatalf("searchPath(%q) = %q, which searches for %q", term, p, got)
+		}
+	}
+}
+
+// stubTenor replaces the HTTP transport so Tenor requests are answered by
+// handler, which receives the request URL and returns a status and body.
+func stubTenor(t *testing.T, handler func(u *url.URL) (int, string)) {
+	t.Helper()
+	orig := client.Default.Transport
+	client.Default.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		status, body := handler(r.URL)
+		return &http.Response{
+			StatusCode: status,
+			Status:     http.StatusText(status),
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    r,
+		}, nil
+	})
+	t.Cleanup(func() { client.Default.Transport = orig })
+}
+
+func getExplore(t *testing.T, target string) (int, string) {
+	t.Helper()
+	s, err := New(assets.Assets, "test", &config.Config{CacheDisabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	return rec.Code, rec.Body.String()
+}
+
+const (
+	featuredPage1 = `{"results":[{"itemurl":"https://tenor.com/view/cat-gif-1","content_description":"a cat",` +
+		`"media_formats":{"tinygif":{"url":"https://media.tenor.com/a/cat.gif","dims":[220,124]}}}],"next":"c2"}`
+	featuredPage2 = `{"results":[{"itemurl":"https://tenor.com/view/dog-gif-2","content_description":"a dog",` +
+		`"media_formats":{"tinygif":{"url":"https://media.tenor.com/b/dog.gif","dims":[220,124]}}}],"next":""}`
+	trendingTags = `{"tags":[{"searchterm":"good night","image":"https://media.tenor.com/n/night.gif"}]}`
+)
+
+func TestExplorePagination(t *testing.T) {
+	var categoryCalls int
+	stubTenor(t, func(u *url.URL) (int, string) {
+		switch u.Path {
+		case "/v2/featured":
+			if u.Query().Get("pos") == "c2" {
+				return http.StatusOK, featuredPage2
+			}
+			return http.StatusOK, featuredPage1
+		case "/v2/categories":
+			categoryCalls++
+			return http.StatusOK, trendingTags
+		}
+		return http.StatusNotFound, ""
+	})
+
+	t.Run("first page", func(t *testing.T) {
+		code, body := getExplore(t, "/explore")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		for _, want := range []string{
+			`href="/search/good-night-gifs"`, // trending search
+			`href="/view/cat-gif-1"`,         // featured GIF
+			`href="/explore?pos=c2"`,         // next page
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("first page is missing %s", want)
+			}
+		}
+		if strings.Contains(body, "Previous page") {
+			t.Fatal("first page has a Previous link")
+		}
+	})
+
+	t.Run("later page", func(t *testing.T) {
+		before := categoryCalls
+		code, body := getExplore(t, "/explore?pos=c2")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", code)
+		}
+		if !strings.Contains(body, `href="/view/dog-gif-2"`) {
+			t.Fatal("later page is missing its featured GIF")
+		}
+		if !strings.Contains(body, `href="/explore"`) || !strings.Contains(body, "Previous page") {
+			t.Fatal("later page does not link back to the first page")
+		}
+		if strings.Contains(body, "Next page") {
+			t.Fatal("last page has a Next link")
+		}
+		if strings.Contains(body, "Trending searches") || categoryCalls != before {
+			t.Fatal("later page shows or fetches trending searches")
+		}
+	})
+
+	t.Run("locale prefix", func(t *testing.T) {
+		code, body := getExplore(t, "/en-us/explore")
+		if code != http.StatusOK || !strings.Contains(body, `href="/en-us/explore?pos=c2"`) {
+			t.Fatalf("status = %d, want 200 with locale-prefixed pagination", code)
+		}
+	})
+}
+
+func TestExploreWithoutTrending(t *testing.T) {
+	stubTenor(t, func(u *url.URL) (int, string) {
+		if u.Path == "/v2/featured" {
+			return http.StatusOK, featuredPage1
+		}
+		return http.StatusInternalServerError, ""
+	})
+
+	code, body := getExplore(t, "/explore")
+	if code != http.StatusOK || !strings.Contains(body, `href="/view/cat-gif-1"`) {
+		t.Fatalf("status = %d, want featured GIFs rendered without trending searches", code)
+	}
+	if strings.Contains(body, "Trending searches") {
+		t.Fatal("heading rendered with no trending searches")
+	}
+}
+
+func TestExploreFallsBackToHomepage(t *testing.T) {
+	const home = `<figure><a href="/view/home-gif-3"><img src="https://media.tenor.com/h/home.gif" width="180" height="120" alt="home"></a></figure>`
+	stubTenor(t, func(u *url.URL) (int, string) {
+		if u.Host == "tenor.com" && u.Path == "/" {
+			return http.StatusOK, home
+		}
+		return http.StatusForbidden, ""
+	})
+
+	code, body := getExplore(t, "/explore")
+	if code != http.StatusOK || !strings.Contains(body, `href="/view/home-gif-3"`) {
+		t.Fatalf("status = %d, want homepage GIFs when the API fails", code)
+	}
+
+	// The fallback has no cursor to continue from
+	if code, _ := getExplore(t, "/explore?pos=c2"); code != http.StatusBadGateway {
+		t.Fatalf("later page status = %d, want 502 when the API fails", code)
+	}
 }
