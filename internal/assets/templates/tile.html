@@ -1,0 +1,33 @@
+{{/* A GIF in a grid or row. Takes a scraper.SearchResult. On hover it shows the first tags and a download menu, as far as the result has them. */}}
+{{define "tile"}}
+<div class="tile">
+	<a href="{{.URL}}">
+		<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+	</a>
+	{{$tags := tileTags .Tags}}
+	{{$downloads := downloads .}}
+	{{if or $tags $downloads}}
+	<div class="tile-hover">
+		{{if $tags}}
+		<ul class="tile-tags" aria-label="Tags">
+			{{range $tags}}
+			<li><a href="{{searchPath .}}">{{.}}</a></li>
+			{{end}}
+		</ul>
+		{{end}}
+		{{if eq (len $downloads) 1}}
+		<a class="tile-download" href="{{(index $downloads 0).Href}}" download aria-label="Download" title="Download"></a>
+		{{else if $downloads}}
+		<details class="tile-menu">
+			<summary class="tile-download" aria-label="Download" title="Download"></summary>
+			<ul>
+				{{range $downloads}}
+				<li><a href="{{.Href}}" download>{{.Label}}</a></li>
+				{{end}}
+			</ul>
+		</details>
+		{{end}}
+	</div>
+	{{end}}
+</div>
+{{end}}

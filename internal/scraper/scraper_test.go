@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -434,7 +435,7 @@ func TestParseProfileDOMFallbackReadsOnlyGIFs(t *testing.T) {
 	profile := parseProfile(doc, "/users/mezzo")
 
 	want := []SearchResult{{URL: "/view/gif-2", ImageURL: "https://media.tenor.com/g.gif", Alt: "gif", Width: 10, Height: 20}}
-	if !slices.Equal(profile.GIFs.Results, want) {
+	if !reflect.DeepEqual(profile.GIFs.Results, want) {
 		t.Fatalf("GIFs = %+v, want %+v", profile.GIFs.Results, want)
 	}
 	if len(profile.Stickers.Results) != 0 || len(profile.Memes.Results) != 0 {
@@ -537,14 +538,21 @@ func TestParseGifStoreCache(t *testing.T) {
 			"related":{
 				"123":{"next":"r2","results":[
 					{"id":"123","itemurl":"https://tenor.com/view/cat-gif-123","media_formats":{"tinygif":{"url":"https://media.tenor.com/cat.gif"}}},
-					{"id":"4","itemurl":"https://tenor.com/view/dog-gif-4","content_description":"a dog","media_formats":{"tinygif":{"url":"https://media.tenor.com/dog.gif","dims":[10,20]}}}
+					{"id":"4","itemurl":"https://tenor.com/view/dog-gif-4","content_description":"a dog","tags":["dog","puppy"],"media_formats":{"tinygif":{"url":"https://media.tenor.com/dog.gif","dims":[10,20]},"mediumgif":{"url":"https://media.tenor.com/dog-sd.gif"},"mp4":{"url":"https://media.tenor.com/dog.mp4"}}}
 				]},
 				"999":{"results":[{"id":"5","itemurl":"https://tenor.com/view/other-gif-5","media_formats":{"tinygif":{"url":"https://media.tenor.com/other.gif"}}}]}
 			}
 		}}`, "/view/cat-gif-999")
 
-		want := []SearchResult{{URL: "/view/dog-gif-4", ImageURL: "https://media.tenor.com/dog.gif", Alt: "a dog", Width: 10, Height: 20}}
-		if got.related.Next != "r2" || !slices.Equal(got.related.Results, want) {
+		want := []SearchResult{{
+			URL: "/view/dog-gif-4", ImageURL: "https://media.tenor.com/dog.gif", Alt: "a dog", Width: 10, Height: 20,
+			Tags: []string{"dog", "puppy"},
+			Formats: []GifFormat{
+				{Key: "sd", Label: "SD GIF", URL: "https://media.tenor.com/dog-sd.gif"},
+				{Key: "mp4", Label: "MP4", URL: "https://media.tenor.com/dog.mp4", Video: true},
+			},
+		}}
+		if got.related.Next != "r2" || !reflect.DeepEqual(got.related.Results, want) {
 			t.Fatalf("related = %+v, want %+v with next r2", got.related, want)
 		}
 	})
@@ -589,7 +597,9 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 const apiGIFs = `{"next":"n2","results":[` +
-	`{"itemurl":"https://tenor.com/view/a-gif-1","content_description":"a","media_formats":{"tinygif":{"url":"https://media.tenor.com/a.gif","dims":[10,20]}}},` +
+	`{"itemurl":"https://tenor.com/view/a-gif-1","content_description":"a","tags":["cat","kitten"],"media_formats":{` +
+	`"tinygif":{"url":"https://media.tenor.com/a.gif","dims":[10,20]},` +
+	`"mediumgif":{"url":"https://media.tenor.com/a-sd.gif"},"mp4":{"url":"https://media.tenor.com/a.mp4"}}},` +
 	`{"itemurl":"https://tenor.com/view/no-media-gif-2","media_formats":{}},` +
 	`{"itemurl":"","media_formats":{"tinygif":{"url":"https://media.tenor.com/c.gif"}}}]}`
 
@@ -623,7 +633,7 @@ func TestAPISearchFeaturedAndRelated(t *testing.T) {
 				q.Get("id") != tt.wantID || q.Has("id") != (tt.wantID != "") {
 				t.Fatalf("requested %s, want path %s with q=%q and id=%q", u, tt.wantPath, tt.wantQ, tt.wantID)
 			}
-			if q.Get("pos") != "p1" || q.Get("limit") != "30" || q.Get("media_filter") != "tinygif" ||
+			if q.Get("pos") != "p1" || q.Get("limit") != "30" || q.Get("media_filter") != "tinygif,mediumgif,gif,mp4" ||
 				q.Get("contentfilter") != "low" || q.Get("key") != TenorAPIKey || q.Get("client_key") != TenorClientKey {
 				t.Fatalf("unexpected query %s", u.RawQuery)
 			}
@@ -632,8 +642,15 @@ func TestAPISearchFeaturedAndRelated(t *testing.T) {
 				t.Fatalf("Next = %q, want n2", resp.Next)
 			}
 			// Results without media or a view link cannot be rendered
-			want := SearchResult{URL: "/view/a-gif-1", ImageURL: "https://media.tenor.com/a.gif", Alt: "a", Width: 10, Height: 20}
-			if len(resp.Results) != 1 || resp.Results[0] != want {
+			want := SearchResult{
+				URL: "/view/a-gif-1", ImageURL: "https://media.tenor.com/a.gif", Alt: "a", Width: 10, Height: 20,
+				Tags: []string{"cat", "kitten"},
+				Formats: []GifFormat{
+					{Key: "sd", Label: "SD GIF", URL: "https://media.tenor.com/a-sd.gif"},
+					{Key: "mp4", Label: "MP4", URL: "https://media.tenor.com/a.mp4", Video: true},
+				},
+			}
+			if len(resp.Results) != 1 || !reflect.DeepEqual(resp.Results[0], want) {
 				t.Fatalf("Results = %+v, want [%+v]", resp.Results, want)
 			}
 		})

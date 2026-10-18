@@ -60,6 +60,7 @@ type apiResult struct {
 	URL          string                    `json:"url"`
 	MediaFormats map[string]apiMediaFormat `json:"media_formats"`
 	ContentDesc  string                    `json:"content_description"`
+	Tags         []string                  `json:"tags"`
 }
 
 // apiMediaFormat represents a media format in the API response.
@@ -153,7 +154,7 @@ func APITrending() ([]Trend, error) {
 // ("search", "featured" and "related") and converts them to SearchResults.
 func apiList(endpoint string, params url.Values, limit int, pos string) (*SearchResponse, error) {
 	params.Set("limit", fmt.Sprintf("%d", limit))
-	params.Set("media_filter", "tinygif")
+	params.Set("media_filter", apiMediaFilter)
 
 	if pos != "" {
 		params.Set("pos", pos)
@@ -194,6 +195,8 @@ func apiList(endpoint string, params url.Values, limit int, pos string) (*Search
 			Alt:      r.ContentDesc,
 			Width:    width,
 			Height:   height,
+			Tags:     r.Tags,
+			Formats:  formatsOf(func(key string) string { return r.MediaFormats[key].URL }),
 		})
 	}
 

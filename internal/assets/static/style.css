@@ -190,7 +190,14 @@ pre code {
 	}
 }
 
-.search-results a {
+.tile {
+	position: relative;
+	/* A grid without masonry stretches items to the row; the hover overlay
+	   must stay at the bottom of the image */
+	align-self: start;
+}
+
+.tile > a {
 	display: block;
 	overflow: hidden;
 	line-height: 0;
@@ -201,6 +208,179 @@ pre code {
 	height: auto;
 	border-radius: 8px;
 	background: var(--border);
+}
+
+/*
+ * Tags and a download menu over the bottom of a GIF. Only for devices that
+ * can hover; on others a tap opens the GIF's page, which has both.
+ */
+.tile-hover {
+	display: none;
+}
+
+@media (hover: hover) {
+	.tile:hover,
+	.tile:focus-within {
+		z-index: 5;
+	}
+
+	.tile:has(.tile-menu[open]) {
+		z-index: 5;
+	}
+
+	.tile-hover {
+		position: absolute;
+		inset: auto 0 0;
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 0.5rem;
+		padding: 1.75rem 0.5rem 0.5rem;
+		border-radius: 0 0 8px 8px;
+		background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.15s;
+	}
+
+	.tile:hover .tile-hover,
+	.tile:focus-within .tile-hover {
+		opacity: 1;
+	}
+
+	.tile:has(.tile-menu[open]) .tile-hover {
+		opacity: 1;
+	}
+}
+
+/* One line of tags; those that do not fit wrap out of sight */
+.tile-tags {
+	display: flex;
+	flex-wrap: wrap;
+	flex: 1;
+	gap: 0.25rem;
+	min-width: 0;
+	max-height: 1.5rem;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	list-style: none;
+	line-height: 1.5rem;
+}
+
+.tile-tags li {
+	display: block;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.tile-tags a {
+	display: block;
+	padding: 0 0.5rem;
+	overflow: hidden;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.22);
+	color: #fff;
+	font-size: 0.75rem;
+	line-height: 1.5rem;
+	text-decoration: none;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	pointer-events: auto;
+}
+
+.tile-tags a:hover,
+.tile-tags a:focus-visible {
+	background: var(--accent);
+}
+
+.tile-hover > .tile-download,
+.tile-menu {
+	flex: none;
+	margin-left: auto;
+	pointer-events: auto;
+}
+
+.tile-menu {
+	position: relative;
+}
+
+.tile-download {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.92);
+	color: #1a1a1a;
+	cursor: pointer;
+	list-style: none;
+	line-height: 1;
+	user-select: none;
+	transition: background-color 0.15s, transform 0.15s;
+}
+
+.tile-download::-webkit-details-marker {
+	display: none;
+}
+
+.tile-download::before {
+	--download-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14'/%3E%3C/svg%3E");
+	content: "";
+	width: 1rem;
+	height: 1rem;
+	background: currentColor;
+	-webkit-mask: var(--download-icon) center / contain no-repeat;
+	mask: var(--download-icon) center / contain no-repeat;
+}
+
+.tile-download:hover,
+.tile-download:focus-visible {
+	background: #fff;
+}
+
+.tile-download:active {
+	transform: scale(0.92);
+}
+
+.tile-menu ul {
+	position: absolute;
+	z-index: 10;
+	bottom: calc(100% + 0.35rem);
+	right: 0;
+	margin: 0;
+	padding: 4px;
+	list-style: none;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+	line-height: 1.4;
+}
+
+.tile-menu li a {
+	display: block;
+	padding: 4px 12px;
+	border-radius: 8px;
+	color: var(--main);
+	font-size: 0.85rem;
+	text-decoration: none;
+	white-space: nowrap;
+	transition: background-color 0.15s;
+}
+
+.tile-menu li a:hover,
+.tile-menu li a:focus-visible {
+	background: var(--surface-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tile-hover,
+	.tile-download,
+	.tile-menu li a {
+		transition: none;
+	}
 }
 
 .trends ul {
@@ -757,14 +937,16 @@ a {
 	padding-bottom: 0.5rem;
 }
 
-.profile-row a {
-	display: block;
+.profile-row .tile {
 	aspect-ratio: 1;
 	scroll-snap-align: start;
-	overflow: hidden;
 	border-radius: 8px;
 	background: var(--border);
-	line-height: 0;
+}
+
+.profile-row .tile > a {
+	height: 100%;
+	border-radius: 8px;
 }
 
 .profile-row img {

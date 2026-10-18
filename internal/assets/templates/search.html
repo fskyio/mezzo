@@ -2,9 +2,7 @@
 	<h1>Search</h1>
 	<div class="search-results" role="region" aria-label="Search results">
 		{{range .Results}}
-		<a href="{{.URL}}">
-			<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
-		</a>
+		{{template "tile" .}}
 		{{end}}
 	</div>
 	{{if or .PrevURL .NextURL}}
@@ -12,5 +10,8 @@
 		{{if .PrevURL}}<a class="button secondary" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
 		{{if .NextURL}}<a class="button primary" href="{{.NextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
 	</nav>
+	{{end}}
+	{{if .Results}}
+	<script src="/static/tiles.js{{if .Version}}?v={{.Version}}{{end}}" defer></script>
 	{{end}}
 {{end}}

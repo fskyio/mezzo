@@ -97,9 +97,7 @@
 		<summary>Related GIFs</summary>
 		<div class="search-results" role="region" aria-label="Related GIFs">
 			{{range .Related}}
-			<a href="{{.URL}}">
-				<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
-			</a>
+			{{template "tile" .}}
 			{{end}}
 		</div>
 		{{if or .RelatedPrevURL .RelatedNextURL}}
@@ -109,6 +107,7 @@
 		</nav>
 		{{end}}
 	</details>
+	<script src="/static/tiles.js{{if .Version}}?v={{.Version}}{{end}}" defer></script>
 	{{end}}
 	{{if .Formats}}
 	<script src="/static/view.js{{if .Version}}?v={{.Version}}{{end}}" defer></script>

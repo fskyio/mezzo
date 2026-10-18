@@ -53,6 +53,10 @@ type SearchResult struct {
 	Alt      string
 	Width    int
 	Height   int
+	// Tags and Formats are empty for results scraped from HTML, which does
+	// not list them
+	Tags    []string
+	Formats []GifFormat
 }
 
 // GifPage represents the scraped data from a GIF view page
@@ -94,6 +98,28 @@ var gifFormatSpecs = []struct {
 	{"sd", "SD GIF", "mediumgif", false},
 	{"hd", "HD GIF", "gif", false},
 	{"mp4", "MP4", "mp4", true},
+}
+
+// apiMediaFilter is the media_filter value for the Tenor API: the thumbnail
+// and every format of gifFormatSpecs.
+var apiMediaFilter = func() string {
+	keys := []string{"tinygif"}
+	for _, spec := range gifFormatSpecs {
+		keys = append(keys, spec.tenorKey)
+	}
+	return strings.Join(keys, ",")
+}()
+
+// formatsOf lists the formats a GIF offers, in gifFormatSpecs order. mediaURL
+// returns the URL of Tenor's media format with the given key, or "".
+func formatsOf(mediaURL func(tenorKey string) string) []GifFormat {
+	var formats []GifFormat
+	for _, spec := range gifFormatSpecs {
+		if u := mediaURL(spec.tenorKey); u != "" {
+			formats = append(formats, GifFormat{Key: spec.key, Label: spec.label, URL: u, Video: spec.video})
+		}
+	}
+	return formats
 }
 
 // Format returns the format with the given key, or the default format when the
@@ -350,11 +376,7 @@ func parseGifStoreCache(jsonText, path string) gifStoreCache {
 	}
 
 	page := gifStoreCache{id: id}
-	for _, spec := range gifFormatSpecs {
-		if m, ok := set.Results[0].MediaFormats[spec.tenorKey]; ok && m.URL != "" {
-			page.formats = append(page.formats, GifFormat{Key: spec.key, Label: spec.label, URL: m.URL, Video: spec.video})
-		}
-	}
+	page.formats = formatsOf(func(key string) string { return set.Results[0].MediaFormats[key].URL })
 
 	related := data.GIFs.Related[id]
 	// Tenor lists the GIF itself first
@@ -525,6 +547,7 @@ type storeCacheGIF struct {
 	H1Title      string                     `json:"h1_title"`
 	ContentDesc  string                     `json:"content_description"`
 	ItemURL      string                     `json:"itemurl"`
+	Tags         []string                   `json:"tags"`
 	MediaFormats map[string]storeCacheMedia `json:"media_formats"`
 }
 
@@ -770,6 +793,8 @@ func searchResponse(set storeCacheGIFSet) SearchResponse {
 			Alt:      alt,
 			Width:    width,
 			Height:   height,
+			Tags:     g.Tags,
+			Formats:  formatsOf(func(key string) string { return g.MediaFormats[key].URL }),
 		})
 	}
 	return resp

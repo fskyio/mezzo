@@ -212,6 +212,10 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 		"media":      scraper.MediaPath,
 		"avatar":     scraper.AvatarPath,
 		"searchPath": searchPath,
+		"tileTags":   tileTags,
+		"downloads": func(r scraper.SearchResult) []DownloadOption {
+			return downloadOptions(r.URL, r.Formats)
+		},
 		"formatDate": func(s string) string {
 			t, err := time.Parse(time.RFC3339, s)
 			if err != nil {
@@ -221,8 +225,8 @@ func New(assets fs.FS, version string, cfg *config.Config) (*Server, error) {
 		},
 	}
 
-	// Parse the shared base template
-	baseTmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(assets, "templates/base.html")
+	// Parse the shared base template and the partials that pages include
+	baseTmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(assets, "templates/base.html", "templates/tile.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse base template: %v", err)
 	}
@@ -531,8 +535,17 @@ func formatOptions(viewPath string, formats []scraper.GifFormat, active string) 
 	return options
 }
 
-// downloadOptions builds the download links for the view page at viewPath,
-// one per available format.
+// maxTileTags is how many of a GIF's tags its tile shows on hover.
+const maxTileTags = 3
+
+// tileTags returns the tags a GIF tile shows on hover.
+func tileTags(tags []string) []string {
+	return tags[:min(len(tags), maxTileTags)]
+}
+
+// downloadOptions builds the download links for the GIF at viewPath, one per
+// available format. They fill the download menu of the view page and of the
+// GIF's tile.
 func downloadOptions(viewPath string, formats []scraper.GifFormat) []DownloadOption {
 	slug := path.Base(viewPath)
 	if unescaped, err := url.PathUnescape(slug); err == nil {

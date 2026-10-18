@@ -43,9 +43,7 @@
 			</div>
 			<div class="profile-row" role="region" aria-label="{{.Heading}}">
 				{{range .Results}}
-				<a href="{{.URL}}">
-					<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}">
-				</a>
+				{{template "tile" .}}
 				{{end}}
 			</div>
 		</section>
@@ -58,9 +56,7 @@
 		</div>
 		<div class="search-results" role="region" aria-label="{{.Heading}}">
 			{{range .Results}}
-			<a href="{{.URL}}">
-				<img src="{{media .ImageURL}}" loading="lazy" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
-			</a>
+			{{template "tile" .}}
 			{{end}}
 		</div>
 		{{else if and (not .Rows) (not .PrevURL)}}
@@ -75,6 +71,9 @@
 			{{if .PrevURL}}<a class="button secondary" href="{{.PrevURL}}" aria-label="Previous page">&larr; Previous</a>{{end}}
 			{{if .NextURL}}<a class="button primary" href="{{.NextURL}}" aria-label="Next page">Next &rarr;</a>{{end}}
 		</nav>
+		{{end}}
+		{{if or .Rows .Results}}
+		<script src="/static/tiles.js{{if .Version}}?v={{.Version}}{{end}}" defer></script>
 		{{end}}
 	</div>
 {{end}}

@@ -473,6 +473,63 @@ func TestExplorePagination(t *testing.T) {
 	})
 }
 
+func TestTileHoverControls(t *testing.T) {
+	// The first GIF has everything, the second only a single format and the
+	// third neither tags nor a download, like a result scraped from HTML.
+	stubTenor(t, func(u *url.URL) (int, string) {
+		if u.Path != "/v2/featured" {
+			return http.StatusNotFound, ""
+		}
+		return http.StatusOK, `{"results":[` +
+			`{"itemurl":"https://tenor.com/view/full-gif-1","tags":["one","two","three","four","five"],"media_formats":{` +
+			`"tinygif":{"url":"https://media.tenor.com/t/full.gif"},` +
+			`"mediumgif":{"url":"https://media.tenor.com/m/full.gif"},` +
+			`"gif":{"url":"https://media.tenor.com/h/full.gif"},` +
+			`"mp4":{"url":"https://media.tenor.com/v/full.mp4"}}},` +
+			`{"itemurl":"https://tenor.com/view/single-gif-2","media_formats":{` +
+			`"tinygif":{"url":"https://media.tenor.com/t/single.gif"},` +
+			`"mediumgif":{"url":"https://media.tenor.com/m/single.gif"}}},` +
+			`{"itemurl":"https://tenor.com/view/bare-gif-3","media_formats":{` +
+			`"tinygif":{"url":"https://media.tenor.com/t/bare.gif"}}}],"next":""}`
+	})
+
+	code, body := getPage(t, "/explore")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", code)
+	}
+
+	tiles := strings.Split(body, `<div class="tile">`)[1:]
+	if len(tiles) != 3 {
+		t.Fatalf("got %d tiles, want 3", len(tiles))
+	}
+	full, single, bare := tiles[0], tiles[1], tiles[2]
+
+	for _, want := range []string{`>one</a>`, `>two</a>`, `>three</a>`} {
+		if !strings.Contains(full, want) {
+			t.Errorf("full tile is missing the tag %s", want)
+		}
+	}
+	if strings.Contains(full, `>four</a>`) {
+		t.Error("full tile shows a fourth tag")
+	}
+	for _, want := range []string{`<details class="tile-menu">`, `>SD GIF</a>`, `>HD GIF</a>`, `>MP4</a>`, `?download=full-gif-1-sd"`} {
+		if !strings.Contains(full, want) {
+			t.Errorf("full tile is missing %s", want)
+		}
+	}
+
+	if strings.Contains(single, "tile-tags") || strings.Contains(single, "<details") {
+		t.Error("single-format tile without tags has a tag list or a menu")
+	}
+	if !strings.Contains(single, `<a class="tile-download" href="/media/media.tenor.com/m/single.gif?download=single-gif-2-sd"`) {
+		t.Errorf("single-format tile has no direct download link:\n%s", single)
+	}
+
+	if strings.Contains(bare, "tile-hover") {
+		t.Error("tile without tags or formats has hover controls")
+	}
+}
+
 func TestExploreWithoutTrending(t *testing.T) {
 	stubTenor(t, func(u *url.URL) (int, string) {
 		if u.Path == "/v2/featured" {
