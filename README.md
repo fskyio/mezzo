@@ -13,6 +13,8 @@ Mezzo is an open-source, privacy-focused front-end for Tenor that allows you to 
 ![Showcase of the search page](./docs/images/search.png)
 *Showcase of the search page*
 
+![Showcase of the explore page](./docs/images/explore.png)
+*Showcase of the explore page*
 </details>
 
 # Instances
