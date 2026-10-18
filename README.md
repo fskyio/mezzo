@@ -93,6 +93,34 @@ You can build a binary using:
 go build -o mezzo ./cmd/mezzo
 ```
 
+## AppArmor
+An optional AppArmor profile is in [`packaging/apparmor/usr.bin.mezzo`](packaging/apparmor/usr.bin.mezzo). It lets Mezzo listen on a TCP port, resolve DNS, make HTTPS requests, and read and write its media cache directory. It does not let Mezzo run other programs or touch any other file. It has been tested on Ubuntu 24.04 and Debian 12.
+
+To install it on Debian or Ubuntu and restart the service:
+
+```bash
+sudo install -m 644 packaging/apparmor/usr.bin.mezzo /etc/apparmor.d/usr.bin.mezzo
+sudo apparmor_parser -r /etc/apparmor.d/usr.bin.mezzo
+sudo systemctl restart mezzo
+```
+
+The profile applies to `/usr/bin/mezzo` and `/usr/local/bin/mezzo`, and allows the media cache in `/var/cache/mezzo`, where the systemd unit keeps it. If you use a different `MEZZO_CACHE_MEDIA_DIR` or a port below 1024, add rules to `/etc/apparmor.d/local/usr.bin.mezzo`, which is kept across upgrades, then reload the profile with the `apparmor_parser -r` command above:
+
+```
+# a different MEZZO_CACHE_MEDIA_DIR
+/srv/mezzo-cache/ r,
+/srv/mezzo-cache/** rw,
+
+# a listening port below 1024 (the service needs the capability itself too)
+capability net_bind_service,
+```
+
+If you delete the local file later, reload with `sudo apparmor_parser -r -T /etc/apparmor.d/usr.bin.mezzo`. Otherwise AppArmor may keep using a cached copy of the profile that still has the old rules.
+
+To see what the profile would block without enforcing it, load it in complain mode with `sudo apparmor_parser -r -C /etc/apparmor.d/usr.bin.mezzo`. The kernel logs these accesses (`journalctl -k | grep apparmor`, or `/var/log/audit/audit.log` if auditd is installed). Without auditd the kernel may drop some of the messages.
+
+For a container, load the profile the same way, start the container with `--security-opt apparmor=mezzo`, and allow the container's cache path (`/cache` in the compose and Quadlet files) in the local file. This was tested with rootful Podman, including with `no-new-privileges`.
+
 # Configuration
 The application can be configured using the following environment variables:
 

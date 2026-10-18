@@ -1,0 +1,80 @@
+# AppArmor profile for Mezzo.
+#
+# Mezzo is a static Go binary. It listens on a TCP port, fetches pages and
+# media from Tenor over HTTPS, and optionally keeps a media cache on disk.
+# It never runs other programs, so none are allowed here.
+#
+# Rules were derived from what the binary actually touches, then checked in
+# enforce mode under the systemd unit in packaging/systemd/mezzo.service on
+# Ubuntu 24.04 (AppArmor 4.0) and Debian 12 (AppArmor 3.0), and in a Podman
+# container on Ubuntu 24.04.
+#
+# Site-specific additions (a different MEZZO_CACHE_MEDIA_DIR, a port below 1024)
+# belong in /etc/apparmor.d/local/usr.bin.mezzo, which survives upgrades.
+#
+# There is no abi line on purpose. abi/3.0 would also confine unix and netlink
+# sockets, but on Ubuntu 24.04 it makes the container runtime's own profile
+# (crun, runc) refuse every socket when a container runs with no-new-privileges,
+# which the compose and Quadlet examples set. The systemd unit already limits
+# address families with RestrictAddressFamilies=.
+
+#include <tunables/global>
+
+profile mezzo /usr/{,local/}bin/mezzo {
+  # HTTP server (tcp), HTTPS client (tcp), DNS (udp, falling back to tcp).
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+
+  # Logs go to stderr. Under systemd that is a unix socket to journald, and
+  # where unix sockets are mediated by default (Debian 12) writing to it needs a
+  # rule, or every log line is silently dropped. Such a kernel cannot tell unix
+  # operations apart, so there the rule also lets the process create and connect
+  # unix sockets. RestrictAddressFamilies= in the systemd unit still blocks that.
+  unix (send, receive) type=stream peer=(label=unconfined),
+
+  # The Go runtime preempts goroutines by signalling its own threads (SIGURG).
+  # With no-new-privileges a container's label is stacked on the runtime's
+  # (crun//&mezzo), hence the leading glob.
+  signal peer=**mezzo,
+
+  # A service manager or container runtime stops and checks on the process with
+  # SIGTERM, SIGKILL and signal 0. Under systemd the sender is unconfined, but a
+  # container runtime has its own profile (crun, runc, podman, ...) and a rule
+  # naming only unconfined peers leaves the container impossible to stop.
+  signal receive,
+
+  # Go runtime: huge page size, the listen backlog limit, and the cgroup CPU
+  # limit that GOMAXPROCS follows (cgroup v2, then v1).
+  @{sys}/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+  @{PROC}/sys/net/core/somaxconn r,
+  @{PROC}/@{pid}/cgroup r,
+  @{PROC}/@{pid}/mountinfo r,
+  @{sys}/fs/cgroup/{,**/}cpu.max r,
+  @{sys}/fs/cgroup/{,**/}cpu.cfs_{quota,period}_us r,
+
+  # Go's pure resolver. /etc/resolv.conf is usually a symlink, and AppArmor
+  # checks the file it points to.
+  /etc/hosts r,
+  /etc/nsswitch.conf r,
+  /etc/resolv.conf r,
+  /run/{resolvconf,NetworkManager,systemd/resolve,connman,netconfig}/resolv.conf r,
+  /run/systemd/resolve/stub-resolv.conf r,
+
+  # CA certificates, to verify Tenor's TLS certificate.
+  #include <abstractions/ssl_certs>
+
+  # Time zone for log timestamps, and MIME types for /static/.
+  /etc/localtime r,
+  /usr/share/zoneinfo/** r,
+  /usr/{,local/}share/mime/globs2 r,
+  /etc/mime.types r,
+
+  # Media cache (MEZZO_CACHE_MEDIA_DIR). With the packaged unit, systemd keeps
+  # it in /var/cache/private/mezzo and /var/cache/mezzo is only a symlink.
+  /var/cache/{,private/}mezzo/ r,
+  /var/cache/{,private/}mezzo/** rw,
+
+  #include if exists <local/usr.bin.mezzo>
+}
