@@ -252,6 +252,12 @@ func GetGif(path string) (*GifPage, error) {
 		}
 	})
 
+	// Tenor fills the author meta with "unknown" for GIFs without an uploader
+	// and renders no profile link. A name that links nowhere is not an author.
+	if authorURL == "" {
+		author = ""
+	}
+
 	// Try to find the avatar from the profile-info section
 	doc.Find(".profile-info .ProfileImage").Each(func(i int, s *goquery.Selection) {
 		style, ok := s.Attr("style")

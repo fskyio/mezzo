@@ -575,6 +575,53 @@ func TestGifPageFormatFallsBackToDefault(t *testing.T) {
 	}
 }
 
+func TestGetGifAuthor(t *testing.T) {
+	const media = `<div><div><div><div><div><img src="https://media.tenor.com/a/cat.gif"></div></div></div></div></div>`
+	tests := []struct {
+		name       string
+		page       string
+		wantAuthor string
+		wantURL    string
+	}{
+		{
+			name: "uploader with profile",
+			page: `<meta itemprop="author" content="Akt66"><meta itemprop="uploadDate" content="2021-09-04T08:29:04.228Z">` +
+				media + `<a class="author-username" rel="author" href="/users/akt66">Akt66</a>`,
+			wantAuthor: "Akt66",
+			wantURL:    "/users/akt66",
+		},
+		{
+			name: "no uploader",
+			page: `<meta itemprop="author" content="unknown"><meta itemprop="uploadDate" content="2021-09-04T08:29:04.228Z">` +
+				media + `<div class="profile-info"></div>`,
+		},
+		{
+			// Only the missing profile link marks a GIF as having no uploader.
+			name: "uploader named unknown",
+			page: `<meta itemprop="author" content="unknown"><meta itemprop="uploadDate" content="2021-09-04T08:29:04.228Z">` +
+				media + `<a class="author-username" rel="author" href="/users/unknown">unknown</a>`,
+			wantAuthor: "unknown",
+			wantURL:    "/users/unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stubAPI(t, `<html><head><title>cat</title></head><body><h1>cat</h1>`+tt.page+`</body></html>`)
+			page, err := GetGif("/view/cat-gif-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if page.Author != tt.wantAuthor || page.AuthorURL != tt.wantURL {
+				t.Errorf("Author, AuthorURL = %q, %q, want %q, %q", page.Author, page.AuthorURL, tt.wantAuthor, tt.wantURL)
+			}
+			if page.UploadDate != "2021-09-04T08:29:04.228Z" {
+				t.Errorf("UploadDate = %q, want it kept", page.UploadDate)
+			}
+		})
+	}
+}
+
 // stubAPI answers every Tenor request with body and returns the URLs requested.
 func stubAPI(t *testing.T, body string) *[]*url.URL {
 	t.Helper()
