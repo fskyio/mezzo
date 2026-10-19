@@ -73,6 +73,7 @@ The packages install:
   `/etc/default/mezzo` on Debian
   `/etc/sysconfig/mezzo` on RPM-based systems
   `/etc/conf.d/mezzo` on Arch Linux
+- the man pages `mezzo(1)` and `mezzo-config(5)`
 
 After installation, edit the environment file if needed, then enable the service:
 
@@ -92,6 +93,46 @@ You can build a binary using:
 ```bash
 go build -o mezzo ./cmd/mezzo
 ```
+
+### Install from source
+`make install` installs the binary, the man pages, and the README and license. Build first, then install as root:
+
+```bash
+make build
+sudo make install
+```
+
+`make install` does not build, so the binary keeps the version that `make build` gave it.
+
+| What | Where (default) |
+|------|-----------------|
+| `mezzo` | `/usr/local/bin` |
+| `mezzo.1`, `mezzo-config.5` | `/usr/local/share/man/man1`, `/usr/local/share/man/man5` |
+| `README.md`, `LICENSE` | `/usr/local/share/doc/mezzo` |
+
+Set `PREFIX` to install elsewhere (`make install PREFIX=/usr`). Packagers can set `DESTDIR` to stage the files into a directory, and `BINDIR`, `MANDIR` and `DOCDIR` to override single locations. To install into your home directory without the docs, run only the parts you need:
+
+```bash
+make install-bin install-man PREFIX="$HOME/.local"
+```
+
+`make uninstall` removes what was installed; give it the same `PREFIX` and `DESTDIR`.
+
+#### systemd
+The systemd unit is not part of `make install`, because not every system runs systemd. On a systemd system, add `install-systemd`:
+
+```bash
+sudo make install install-systemd
+```
+
+This puts `mezzo.service` in `/usr/local/lib/systemd/system` (override with `UNITDIR`), with `ExecStart` pointing at the installed binary. To change settings, put them in `/etc/default/mezzo`, `/etc/sysconfig/mezzo` or `/etc/conf.d/mezzo`, whichever you prefer, as described in `man mezzo-config`. Then load the unit and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now mezzo
+```
+
+On OpenRC, use the example service in [`contrib/openrc/`](contrib/openrc/). `make install` does not install the AppArmor profile (see [AppArmor](#apparmor)) or an environment file.
 
 ## AppArmor
 An optional AppArmor profile is in [`packaging/apparmor/usr.bin.mezzo`](packaging/apparmor/usr.bin.mezzo). It lets Mezzo listen on a TCP port, resolve DNS, make HTTPS requests, and read and write its media cache directory. It does not let Mezzo run other programs or touch any other file. It has been tested on Ubuntu 24.04 and Debian 12.
@@ -145,6 +186,8 @@ The application can be configured using the following environment variables:
 > For backward compatibility, `PORT` and `PATCHES_URL` (without the `MEZZO_` prefix) are still accepted as fallbacks.
 
 A variable that is set but cannot be parsed (for example `MEZZO_CACHE_GIF_TTL=1hour`) stops Mezzo from starting, and the error names every such variable. Unset or empty variables use the default.
+
+These settings are also documented in the `mezzo-config(5)` man page (`man mezzo-config`). `man mezzo` describes the command itself.
 
 ## Media cache on disk
 Out of the box, Mezzo fetches every GIF, video, thumbnail and avatar from Tenor each time someone asks for it. Set `MEZZO_CACHE_MEDIA_DIR` to a directory Mezzo can write to and it keeps a copy there instead, so repeat views load faster and Tenor sees fewer requests from your instance.

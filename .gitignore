@@ -16,6 +16,9 @@ go.work.sum
 # goreleaser builds
 dist/
 
+# gzipped man pages, made for the Linux packages
+/man/*.gz
+
 # Environment files
 .env
 .env.local

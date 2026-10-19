@@ -4,6 +4,7 @@ before:
   hooks:
     - go mod tidy
     - go generate ./...
+    - sh ./packaging/scripts/manpages.sh
 
 builds:
   - binary: mezzo   
@@ -78,6 +79,10 @@ nfpms:
         dst: /usr/share/doc/mezzo/LICENSE
       - src: ./README.md
         dst: /usr/share/doc/mezzo/README.md
+      - src: ./man/mezzo.1.gz
+        dst: /usr/share/man/man1/mezzo.1.gz
+      - src: ./man/mezzo-config.5.gz
+        dst: /usr/share/man/man5/mezzo-config.5.gz
     scripts:
       postinstall: ./packaging/scripts/postinstall.sh
       postremove: ./packaging/scripts/postremove.sh

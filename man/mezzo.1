@@ -1,0 +1,186 @@
+.\" Copyright (C) 2026 FSKY <development@fsky.io>
+.\"
+.\" This file is part of Mezzo. It is distributed under the GNU Affero General
+.\" Public License, version 3 or later. See the LICENSE file for details.
+.TH MEZZO 1 "October 2026" "Mezzo" "User Commands"
+.SH NAME
+mezzo \- privacy-focused front-end for Tenor
+.SH SYNOPSIS
+.B mezzo
+.RB [ \-verbose ]
+.br
+.B mezzo \-version
+.br
+.B mezzo \-help
+.SH DESCRIPTION
+.B mezzo
+is a web server that lets people browse and view GIFs from Tenor without
+Google's tracking and advertising systems.
+It fetches search results, GIF pages, user profiles and media from Tenor and
+serves them to visitors itself.
+.PP
+To view a Tenor link through a Mezzo instance, replace
+.B tenor.com
+in the link with the host name of the instance.
+.PP
+Mezzo runs in the foreground until it receives a signal.
+It is configured through environment variables, not through options or a
+configuration file.
+See
+.BR mezzo\-config (5).
+.SH OPTIONS
+Each option may be written with one or two leading hyphens, so
+.B \-verbose
+and
+.B \-\-verbose
+are the same.
+.TP
+.B \-verbose
+Log debug messages as well as informational ones.
+.TP
+.B \-version
+Print the version of this build and exit.
+.TP
+.BR \-help ", " \-h
+Print a usage summary to standard error and exit with status 0.
+.SH LISTENING
+Mezzo listens on TCP port
+.B MEZZO_PORT
+(default 8006) on all IPv4 addresses and on all IPv6 addresses.
+It keeps running as long as it can listen on at least one of the two, so a
+host without IPv6 works.
+.PP
+Mezzo speaks plain HTTP and does not terminate TLS.
+To serve HTTPS, put a reverse proxy in front of it.
+.SH HTTP INTERFACE
+.TP
+.B /
+The home page, with a short introduction and a link to Explore.
+.TP
+.BI /search/ SLUG
+Search results.
+.TP
+.B /explore
+Trending searches and featured GIFs.
+.TP
+.BI /view/ SLUG
+A GIF page.
+.TP
+.BI /users/ NAME
+A user profile.
+Tenor partner accounts use
+.BI /official/ NAME
+instead.
+.TP
+.BI /users/ NAME / KIND
+A page that lists all of a profile's uploads of one kind:
+.BR gifs ", " stickers " or " memes .
+Partner accounts use
+.BI /official/ NAME / KIND .
+.TP
+.BI /media/ HOST / PATH
+GIFs, videos and thumbnails, fetched from Tenor through Mezzo.
+.TP
+.BI /avatar/ HOST / PATH
+Avatars and banners, fetched from Tenor through Mezzo.
+.TP
+.B /static/
+Mezzo's own style sheets, scripts and images.
+.PP
+Responses for GIF pages, search results, Explore pages and profiles carry a
+.B Mezzo\-Cache
+header.
+So do responses for media when the media cache on disk is enabled.
+.B HIT
+means the response came from a cache.
+.B MISS
+means it was not cached and was fetched from Tenor, and stored if the matching
+cache is enabled.
+.B BYPASS
+means it was fetched from Tenor and not stored.
+.SH LOGGING
+Mezzo writes log lines to standard error as
+.IR key = value
+text.
+Under systemd they end up in the journal:
+.PP
+.RS
+.EX
+journalctl \-u mezzo
+.EE
+.RE
+.SH SIGNALS
+.TP
+.BR SIGINT ", " SIGTERM
+Mezzo logs
+.RB \(lq "shutting down mezzo" \(rq,
+stops listening and exits with status 0.
+.SH EXIT STATUS
+.TP
+.B 0
+Mezzo was asked for its version or usage, or it shut down after a signal.
+.TP
+.B 1
+The configuration is invalid, the server could not be initialized (for
+example, the media cache directory cannot be used), or Mezzo could not listen
+on any address.
+The reason is logged.
+.TP
+.B 2
+An unknown option was given.
+.SH EXAMPLES
+Run Mezzo on port 9000 with debug logging:
+.PP
+.RS
+.EX
+MEZZO_PORT=9000 mezzo \-verbose
+.EE
+.RE
+.PP
+Keep a media cache on disk:
+.PP
+.RS
+.EX
+MEZZO_CACHE_MEDIA_DIR=/var/cache/mezzo mezzo
+.EE
+.RE
+.PP
+Start the packaged service now and at boot:
+.PP
+.RS
+.EX
+systemctl enable \-\-now mezzo
+.EE
+.RE
+.SH FILES
+.TP
+.I /lib/systemd/system/mezzo.service
+The systemd unit installed by the Debian and Ubuntu package.
+.TP
+.I /usr/lib/systemd/system/mezzo.service
+The systemd unit installed by the RPM and Arch Linux packages.
+.TP
+.I /usr/local/lib/systemd/system/mezzo.service
+The systemd unit installed by
+.B make install\-systemd
+with the default prefix.
+.TP
+.I /usr/share/doc/mezzo/
+The README and the license.
+.PP
+For the files that configure the service, see
+.BR mezzo\-config (5).
+.SH SEE ALSO
+.BR mezzo\-config (5),
+.BR systemd.service (5),
+.BR journalctl (1)
+.PP
+Project home page:
+.I https://mezzo.fsky.io/
+.br
+Source code:
+.I https://gitfield.org/fsky/mezzo
+.SH COPYRIGHT
+Copyright \(co 2026\-present FSKY.
+Mezzo is free software, distributed under the GNU Affero General Public
+License, version 3 or later.

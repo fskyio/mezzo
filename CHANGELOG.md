@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Man pages `mezzo(1)` and `mezzo-config(5)`, in `man/`. The deb, rpm and Arch Linux packages install them gzipped under `/usr/share/man`.
+- `make install` and `make uninstall`. They install the binary, the man pages, and the README and license under `PREFIX` (default `/usr/local`), with `DESTDIR` support for packagers. `make install-bin`, `install-man` and `install-doc` install the parts separately. `make install-systemd` installs the systemd unit, which `make install` leaves out because not every system runs systemd.
+
 ## [1.5.0] - 2026-10-18
 
 ### Added

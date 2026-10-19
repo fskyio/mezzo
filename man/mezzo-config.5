@@ -1,0 +1,228 @@
+.\" Copyright (C) 2026 FSKY <development@fsky.io>
+.\"
+.\" This file is part of Mezzo. It is distributed under the GNU Affero General
+.\" Public License, version 3 or later. See the LICENSE file for details.
+.TH MEZZO-CONFIG 5 "October 2026" "Mezzo" "File Formats Manual"
+.SH NAME
+mezzo\-config \- environment configuration for mezzo
+.SH DESCRIPTION
+.BR mezzo (1)
+is configured entirely through environment variables.
+It has no configuration file and no options for settings.
+.PP
+A variable that is unset or empty has its default value.
+A variable that is set but cannot be parsed stops Mezzo from starting with exit
+status 1.
+The error names every such variable, not only the first.
+.PP
+Variables have one of these types:
+.TP
+.B string
+Used as it is.
+.TP
+.B boolean
+One of
+.BR 1 ", " t ", " T ", " TRUE ", " true ", " True ,
+.BR 0 ", " f ", " F ", " FALSE ", " false " or " False .
+.TP
+.B integer
+A decimal number, such as
+.BR 500 .
+.TP
+.B duration
+A sequence of decimal numbers, each followed by a unit:
+.BR ns ", " us ", " ms ", " s ", " m " or " h .
+Examples are
+.BR 30m ", " 2h " and " 1h30m .
+There is no unit for days, so write a week as
+.BR 168h .
+.SH VARIABLES
+.SS Server
+.TP
+.B MEZZO_PORT
+(string, default
+.BR 8006 )
+The TCP port to listen on.
+Ports below 1024 need extra privileges.
+Mezzo does not check the value until it tries to listen, and exits with status
+1 if it cannot.
+.TP
+.B MEZZO_PATCHES_URL
+(string, default empty)
+A link to the patches that were applied.
+Set it only if your instance runs modified source code.
+The pages then show a
+.I Patches
+link in the footer.
+.PP
+.B PORT
+and
+.B PATCHES_URL
+(without the
+.B MEZZO_
+prefix) are still accepted as fallbacks.
+They are used only when the matching
+.B MEZZO_
+variable is unset or empty.
+.SS Memory caches
+.TP
+.B MEZZO_CACHE_DISABLED
+(boolean, default
+.BR false )
+Turn off all caching, including the media cache on disk.
+.TP
+.B MEZZO_CACHE_GIF_TTL
+(duration, default
+.BR 1h )
+How long to cache the metadata of GIF pages.
+.TP
+.B MEZZO_CACHE_GIF_MAX
+(integer, default
+.BR 1000 )
+The maximum number of GIF pages to keep in the cache.
+.TP
+.B MEZZO_CACHE_SEARCH_TTL
+(duration, default
+.BR 10m )
+How long to cache search results, Explore page results, later pages of a
+profile's GIFs, stickers and memes, and later pages of related GIFs.
+.TP
+.B MEZZO_CACHE_SEARCH_MAX
+(integer, default
+.BR 500 )
+The maximum number of search result pages, and separately of Explore pages, to
+keep in the cache.
+Later profile pages and later pages of related GIFs share the search result
+slots.
+.TP
+.B MEZZO_CACHE_PROFILE_TTL
+(duration, default
+.BR 30m )
+How long to cache user profile pages.
+.TP
+.B MEZZO_CACHE_PROFILE_MAX
+(integer, default
+.BR 200 )
+The maximum number of user profiles to keep in the cache.
+.SS Media cache on disk
+The media cache is off unless
+.B MEZZO_CACHE_MEDIA_DIR
+is set.
+Without it, Mezzo fetches every GIF, video, thumbnail and avatar from Tenor each
+time someone asks for it.
+With it, Mezzo keeps a copy and serves repeat requests from disk, which makes
+them faster and sends Tenor fewer requests from your instance.
+.TP
+.B MEZZO_CACHE_MEDIA_DIR
+(string, default empty)
+The directory that holds the cache.
+Mezzo creates it if needed, with access for its owner only.
+Use a directory that nothing else uses.
+Mezzo deletes only files that it created there.
+.IP
+The directory is a record of what has been viewed on your instance, like an
+access log.
+Keep it private, and keep the lifetimes short if that matters to your users.
+.TP
+.B MEZZO_CACHE_MEDIA_MAX_MB
+(integer, default
+.BR 512 )
+The maximum total size of the cache, in MiB.
+When the cache is full, the least recently used files are deleted first.
+Must be greater than 0.
+.TP
+.B MEZZO_CACHE_MEDIA_MAX_FILE_MB
+(integer, default
+.BR 16 )
+The largest single file to store, in MiB.
+Larger files are passed through without being stored.
+A value that is 0, negative or larger than
+.B MEZZO_CACHE_MEDIA_MAX_MB
+counts as equal to it.
+.TP
+.B MEZZO_CACHE_MEDIA_TTL
+(duration, default
+.BR 168h )
+How long to keep GIFs, videos and thumbnails.
+Must be greater than 0.
+.TP
+.B MEZZO_CACHE_AVATAR_TTL
+(duration, default
+.BR 24h )
+How long to keep avatars and banners, in the cache and in browsers.
+Avatars can change, so they are kept for a shorter time than other media.
+Must be greater than 0.
+.PP
+While
+.B MEZZO_CACHE_MEDIA_DIR
+is set,
+.BR MEZZO_CACHE_MEDIA_MAX_MB ,
+.B MEZZO_CACHE_MEDIA_TTL
+and
+.B MEZZO_CACHE_AVATAR_TTL
+must be greater than 0, or Mezzo exits with status 1.
+This check is skipped when
+.B MEZZO_CACHE_DISABLED
+is true.
+.PP
+When the media cache is on, responses for media carry a
+.B Mezzo\-Cache
+header that says what happened to the file:
+.B HIT
+if it was served from the cache,
+.B MISS
+if it was fetched and stored, and
+.B BYPASS
+if it was fetched but not stored.
+.SH FILES
+The systemd unit installed by the Linux packages reads whichever of the
+environment files below exist.
+Every line is
+.IR NAME = value ,
+and lines that start with
+.B #
+are comments.
+The exact syntax is described in
+.BR systemd.exec (5).
+The package manager does not overwrite your changes to the file when it
+upgrades Mezzo.
+After editing the file, restart the service:
+.PP
+.RS
+.EX
+systemctl restart mezzo
+.EE
+.RE
+.TP
+.I /etc/default/mezzo
+Installed by the Debian and Ubuntu package.
+.TP
+.I /etc/sysconfig/mezzo
+Installed by the RPM package.
+.TP
+.I /etc/conf.d/mezzo
+Installed by the Arch Linux package.
+The example OpenRC service in the source tree
+.RI ( contrib/openrc/ )
+reads the same path.
+.TP
+.I /var/cache/mezzo
+A directory that the systemd unit creates for the service, owned by the
+service's user.
+It is a good value for
+.BR MEZZO_CACHE_MEDIA_DIR .
+.SH EXAMPLES
+An environment file that listens on port 9000 and keeps a media cache of at
+most 1 GiB for three days:
+.PP
+.RS
+.EX
+MEZZO_PORT=9000
+MEZZO_CACHE_MEDIA_DIR=/var/cache/mezzo
+MEZZO_CACHE_MEDIA_MAX_MB=1024
+MEZZO_CACHE_MEDIA_TTL=72h
+.EE
+.RE
+.SH SEE ALSO
+.BR mezzo (1),
+.BR systemd.exec (5)
